@@ -52,12 +52,36 @@ class PatternOptimizer:
         if n_clusters < 1:
             n_clusters = 1
         
+        # 性能优化：对大量像素进行采样，只对采样后的像素进行聚类
+        # 对于大图像（>50万像素），采样到最多10万像素
+        max_sample_size = 100000
+        if len(pixels) > max_sample_size:
+            # 随机采样
+            sample_indices = np.random.choice(len(pixels), max_sample_size, replace=False)
+            sample_pixels = pixels[sample_indices]
+        else:
+            sample_pixels = pixels
+            sample_indices = None
+        
+        # 使用K-means聚类，减少n_init以提高速度
+        # n_init=1 或 3：减少初始化次数，加快速度
+        # max_iter=100：限制最大迭代次数
+        # tol=1e-4：收敛阈值，稍微放宽以提高速度
+        n_init_value = 1 if n_clusters <= 10 else 3  # 小聚类数用1次初始化，大聚类数用3次
+        
         kmeans = KMeans(n_clusters=n_clusters, 
-                       random_state=42, n_init=10)
-        labels = kmeans.fit_predict(pixels)
+                       random_state=42, 
+                       n_init=n_init_value,
+                       max_iter=100,
+                       tol=1e-4)
+        kmeans.fit(sample_pixels)
         
         # 获取聚类中心
         centers = kmeans.cluster_centers_.astype(np.uint8)
+        
+        # 对原始所有像素进行预测（只预测，不重新训练）
+        # 使用批量预测以提高速度
+        labels = kmeans.predict(pixels)
         
         # 将每个像素替换为对应的聚类中心
         optimized_pixels = centers[labels]

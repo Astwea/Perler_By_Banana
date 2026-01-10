@@ -7,8 +7,10 @@ import shutil
 import traceback
 import logging
 import base64
+import asyncio
 from pathlib import Path
 from typing import Optional, Dict, List
+from concurrent.futures import ThreadPoolExecutor
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -50,6 +52,10 @@ pattern_optimizer = PatternOptimizer(color_matcher)
 printer = Printer()
 nano_banana_client: Optional[NanoBananaClient] = None
 
+# 线程池执行器用于CPU密集型任务
+# 使用线程池而不是进程池，因为NumPy、PIL等库在线程间共享更高效
+thread_pool_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="image_processing")
+
 # 存储生成的图案（内存中）
 patterns_store: Dict[str, Dict] = {}
 
@@ -58,6 +64,112 @@ uploaded_files: Dict[str, Dict] = {}
 
 # 存储每个文件的处理步骤结果（用于分步骤处理）
 step_results: Dict[str, Dict] = {}
+
+
+def run_in_thread_pool(func, *args, **kwargs):
+    """
+    在线程池中执行函数（用于CPU密集型任务）
+    
+    Args:
+        func: 要执行的函数
+        *args, **kwargs: 函数参数
+    
+    Returns:
+        函数执行结果（awaitable）
+    """
+    loop = asyncio.get_event_loop()
+    if kwargs:
+        # 如果有kwargs，需要使用functools.partial包装
+        from functools import partial
+        func = partial(func, **kwargs)
+    return loop.run_in_executor(thread_pool_executor, lambda: func(*args))
+
+
+# CPU密集型任务的包装函数
+def _preprocess_image(image_path: str, target_colors: int, max_dimension: int,
+                     denoise_strength: float, contrast_factor: float, 
+                     sharpness_factor: float, use_custom: bool, bead_size_mm: float):
+    """在线程池中执行的图像预处理函数"""
+    # 加载图像
+    image_processor.load_image(image_path)
+    image_array = image_processor.get_image_array()
+    
+    # 应用优化
+    optimized_image, (new_width, new_height) = pattern_optimizer.apply_full_optimization(
+        image_array,
+        target_colors=target_colors,
+        max_dimension=max_dimension,
+        denoise_strength=denoise_strength,
+        contrast_factor=contrast_factor,
+        sharpness_factor=sharpness_factor,
+        use_custom=use_custom,
+        based_on_subject=True,
+        background_rgb=(255, 255, 255),
+        threshold=5
+    )
+    
+    # 保存预处理后的图像
+    from PIL import Image
+    processed_image = Image.fromarray(optimized_image)
+    preprocess_file_id = str(uuid.uuid4())
+    preprocess_path = f"static/output/preprocess_{preprocess_file_id}.png"
+    processed_image.save(preprocess_path)
+    
+    return preprocess_file_id, preprocess_path, new_width, new_height
+
+
+def _generate_pattern(preprocess_path: str, new_width: int, new_height: int,
+                     bead_size_mm: float, use_custom: bool, brand: Optional[str],
+                     series: Optional[str]):
+    """在线程池中执行的图案生成函数"""
+    # 重新加载预处理后的图像
+    image_processor.load_image(preprocess_path)
+    optimized_image = image_processor.get_image_array()
+    
+    # 颜色匹配
+    matched_colors = color_matcher.match_image_colors(
+        optimized_image,
+        use_custom=use_custom,
+        method="cie94",
+        brand=brand if brand else None,
+        series=series if series else None
+    )
+    
+    # 生成拼豆图案
+    bead_pattern = BeadPattern(new_width, new_height, bead_size_mm=bead_size_mm)
+    bead_pattern.from_matched_colors(matched_colors)
+    
+    # 生成可视化图像（显示编号和不显示编号两个版本）
+    viz_image_with_labels = bead_pattern.to_image(cell_size=10, show_labels=True, show_grid=True)
+    viz_image_no_labels = bead_pattern.to_image(cell_size=10, show_labels=False, show_grid=True)
+    
+    pattern_id = str(uuid.uuid4())
+    viz_path_with_labels = f"static/output/{pattern_id}_viz.png"
+    viz_path_no_labels = f"static/output/{pattern_id}_viz_no_labels.png"
+    
+    viz_image_with_labels.save(viz_path_with_labels)
+    viz_image_no_labels.save(viz_path_no_labels)
+    
+    # 获取统计信息
+    stats = bead_pattern.get_color_statistics(exclude_background=False)
+    stats_without_bg = bead_pattern.get_color_statistics(exclude_background=True)
+    subject_size = bead_pattern.get_subject_size()
+    
+    return pattern_id, bead_pattern, stats, stats_without_bg, subject_size
+
+
+def _generate_pdf(pattern: BeadPattern, pdf_path: str, paper_size: str,
+                 margin_mm: float, show_grid: bool, show_labels: bool, dpi: int):
+    """在线程池中执行的PDF生成函数"""
+    printer.generate_pdf(
+        pattern,
+        pdf_path,
+        paper_size=paper_size,
+        margin_mm=margin_mm,
+        show_grid=show_grid,
+        show_labels=show_labels,
+        dpi=dpi
+    )
 
 
 # 请求/响应模型
@@ -90,7 +202,7 @@ class PrintParams(BaseModel):
     paper_size: str = "A4"
     margin_mm: float = 10.0
     show_grid: bool = True
-    show_labels: bool = False
+    show_labels: bool = True  # 默认显示色号，因为PDF需要保存带色号的图
     dpi: int = 300
 
 
@@ -214,25 +326,35 @@ async def step_nano_banana(
         
         logger.info(f"开始Nano Banana转换: file_id={file_id}, prompt={prompt}, model={model}")
         
-        # 调用Nano Banana API
-        result = nano_banana_client.generate_image(
-            prompt=prompt,
-            image_path=image_path,
-            model=model,
-            aspect_ratio=aspect_ratio,
-            image_size=image_size,
-            max_dimension=max_dimension,
-            timeout=300
-        )
-        
-        # 下载生成的图片
-        if result.get("results") and len(result["results"]) > 0:
-            generated_image_url = result["results"][0]["url"]
-            nano_banana_file_id = str(uuid.uuid4())
-            downloaded_path = nano_banana_client.download_image(
-                generated_image_url,
-                save_path=f"static/images/nano_banana_{nano_banana_file_id}.png"
+        # 在线程池中执行Nano Banana API调用（I/O密集型任务，使用同步requests库会阻塞事件循环）
+        def _call_nano_banana():
+            # 调用Nano Banana API
+            result = nano_banana_client.generate_image(
+                prompt=prompt,
+                image_path=image_path,
+                model=model,
+                aspect_ratio=aspect_ratio,
+                image_size=image_size,
+                max_dimension=max_dimension,
+                timeout=300
             )
+            
+            # 下载生成的图片
+            if result.get("results") and len(result["results"]) > 0:
+                generated_image_url = result["results"][0]["url"]
+                nano_banana_file_id = str(uuid.uuid4())
+                downloaded_path = nano_banana_client.download_image(
+                    generated_image_url,
+                    save_path=f"static/images/nano_banana_{nano_banana_file_id}.png"
+                )
+                return result, nano_banana_file_id, downloaded_path
+            else:
+                raise ValueError("Nano Banana API未返回图片")
+        
+        result, nano_banana_file_id, downloaded_path = await run_in_thread_pool(_call_nano_banana)
+        
+        # 处理结果
+        if result and downloaded_path:
             
             # 保存步骤结果
             if file_id not in step_results:
@@ -309,30 +431,18 @@ async def step_preprocess(
             input_image_path = str(image_files[0])
             logger.info(f"使用原始图片: {input_image_path}")
         
-        # 加载图像
-        image_processor.load_image(input_image_path)
-        image_array = image_processor.get_image_array()
-        
-        # 应用优化（基于主体尺寸，排除背景）
-        optimized_image, (new_width, new_height) = pattern_optimizer.apply_full_optimization(
-            image_array,
-            target_colors=target_colors,
-            max_dimension=max_dimension,
-            denoise_strength=denoise_strength,
-            contrast_factor=contrast_factor,
-            sharpness_factor=sharpness_factor,
-            use_custom=use_custom,
-            based_on_subject=True,  # 基于主体尺寸计算
-            background_rgb=(255, 255, 255),  # 白色背景
-            threshold=5  # 颜色判断阈值
+        # 在线程池中执行图像预处理（CPU密集型任务）
+        preprocess_file_id, preprocess_path, new_width, new_height = await run_in_thread_pool(
+            _preprocess_image,
+            input_image_path,
+            target_colors,
+            max_dimension,
+            denoise_strength,
+            contrast_factor,
+            sharpness_factor,
+            use_custom,
+            bead_size_mm
         )
-        
-        # 保存预处理后的图像
-        from PIL import Image
-        processed_image = Image.fromarray(optimized_image)
-        preprocess_file_id = str(uuid.uuid4())
-        preprocess_path = f"static/output/preprocess_{preprocess_file_id}.png"
-        processed_image.save(preprocess_path)
         
         # 验证拼豆大小
         if bead_size_mm not in [2.6, 5.0]:
@@ -385,7 +495,9 @@ async def step_preprocess(
 async def step_generate_pattern(
     file_id: str = Form(...),
     use_custom: bool = Form(True),
-    bead_size_mm: float = Form(2.6)
+    bead_size_mm: float = Form(2.6),
+    brand: Optional[str] = Form(None),
+    series: Optional[str] = Form(None)
 ):
     """
     步骤3: 生成拼豆图案
@@ -413,39 +525,24 @@ async def step_generate_pattern(
         if "bead_size_mm" in preprocess_result:
             bead_size_mm = preprocess_result["bead_size_mm"]
         
-        # 重新加载预处理后的图像
-        image_processor.load_image(preprocess_path)
-        optimized_image = image_processor.get_image_array()
+        # 在线程池中执行图案生成（CPU密集型任务）
+        pattern_id, bead_pattern, stats, stats_without_bg, subject_size = await run_in_thread_pool(
+            _generate_pattern,
+            preprocess_path,
+            new_width,
+            new_height,
+            bead_size_mm,
+            use_custom,
+            brand if brand else None,
+            series if series else None
+        )
         
-        # 颜色匹配（使用CIE94算法提高准确性）
-        matched_colors = color_matcher.match_image_colors(optimized_image, use_custom=use_custom, method="cie94")
-        
-        # 生成拼豆图案（使用指定的拼豆大小）
-        bead_pattern = BeadPattern(new_width, new_height, bead_size_mm=bead_size_mm)
-        bead_pattern.from_matched_colors(matched_colors)
-        
-        # 保存图案
-        pattern_id = str(uuid.uuid4())
+        # 保存图案（这个操作很快，不需要在线程池中执行）
         patterns_store[pattern_id] = {
             "pattern": bead_pattern,
             "file_id": file_id,
             "params": preprocess_result["params"]
         }
-        
-        # 生成可视化图像（显示编号和不显示编号两个版本）
-        viz_image_with_labels = bead_pattern.to_image(cell_size=10, show_labels=True, show_grid=True)
-        viz_path_with_labels = f"static/output/{pattern_id}_viz.png"
-        viz_image_with_labels.save(viz_path_with_labels)
-        
-        # 生成不显示编号的版本（用于生成实物效果图）
-        viz_image_no_labels = bead_pattern.to_image(cell_size=10, show_labels=False, show_grid=True)
-        viz_path_no_labels = f"static/output/{pattern_id}_viz_no_labels.png"
-        viz_image_no_labels.save(viz_path_no_labels)
-        
-        # 获取统计信息（包含主体尺寸）
-        stats = bead_pattern.get_color_statistics(exclude_background=False)
-        stats_without_bg = bead_pattern.get_color_statistics(exclude_background=True)
-        subject_size = bead_pattern.get_subject_size()
         
         # 保存步骤结果
         step_results[file_id]["generate_pattern"] = {
@@ -582,27 +679,34 @@ async def process_image(
                     else:
                         aspect_ratio = "auto"
                     
-                    # 调用Nano Banana API
-                    # 使用本地图片路径，客户端会自动转换为Base64
-                    result = nano_banana_client.generate_image(
-                        prompt=nano_banana_prompt,
-                        image_path=image_path,  # 使用本地路径，会自动转换为Base64
-                        model=nano_banana_model,
-                        aspect_ratio=aspect_ratio,
-                        image_size=nano_banana_image_size,
-                        max_dimension=max_dimension,
-                        timeout=300  # 5分钟超时
-                    )
-                    
-                    # 下载生成的图片
-                    if result.get("results") and len(result["results"]) > 0:
-                        generated_image_url = result["results"][0]["url"]
-                        nano_banana_file_id = str(uuid.uuid4())
-                        downloaded_path = nano_banana_client.download_image(
-                            generated_image_url,
-                            save_path=f"static/images/nano_banana_{nano_banana_file_id}.png"
+                    # 在线程池中执行Nano Banana API调用
+                    def _call_nano_banana_legacy():
+                        # 调用Nano Banana API
+                        result = nano_banana_client.generate_image(
+                            prompt=nano_banana_prompt,
+                            image_path=image_path,
+                            model=nano_banana_model,
+                            aspect_ratio=aspect_ratio,
+                            image_size=nano_banana_image_size,
+                            max_dimension=max_dimension,
+                            timeout=300
                         )
                         
+                        # 下载生成的图片
+                        if result.get("results") and len(result["results"]) > 0:
+                            generated_image_url = result["results"][0]["url"]
+                            nano_banana_file_id = str(uuid.uuid4())
+                            downloaded_path = nano_banana_client.download_image(
+                                generated_image_url,
+                                save_path=f"static/images/nano_banana_{nano_banana_file_id}.png"
+                            )
+                            return downloaded_path
+                        else:
+                            return None
+                    
+                    downloaded_path = await run_in_thread_pool(_call_nano_banana_legacy)
+                    
+                    if downloaded_path:
                         # 使用生成的图片
                         image_path = downloaded_path
                         logger.info(f"Nano Banana转换完成，图片已保存到: {downloaded_path}")
@@ -615,35 +719,33 @@ async def process_image(
         else:
             logger.info("未启用Nano Banana，使用原始图片处理")
         
-        # 加载图像
-        image_processor.load_image(image_path)
-        
-        # 获取图像数组
-        image_array = image_processor.get_image_array()
-        
-        # 应用优化（基于主体尺寸，排除背景）
-        optimized_image, (new_width, new_height) = pattern_optimizer.apply_full_optimization(
-            image_array,
-            target_colors=target_colors,
-            max_dimension=max_dimension,
-            denoise_strength=denoise_strength,
-            contrast_factor=contrast_factor,
-            sharpness_factor=sharpness_factor,
-            use_custom=use_custom,
-            based_on_subject=True,  # 基于主体尺寸计算
-            background_rgb=(255, 255, 255),  # 白色背景
-            threshold=5  # 颜色判断阈值
+        # 在线程池中执行图像预处理（CPU密集型任务）
+        # 先预处理图像
+        _, preprocess_path, new_width, new_height = await run_in_thread_pool(
+            _preprocess_image,
+            image_path,
+            target_colors,
+            max_dimension,
+            denoise_strength,
+            contrast_factor,
+            sharpness_factor,
+            use_custom,
+            2.6  # 默认拼豆大小
         )
         
-        # 颜色匹配（使用CIE94算法提高准确性）
-        matched_colors = color_matcher.match_image_colors(optimized_image, use_custom=use_custom, method="cie94")
+        # 在线程池中执行图案生成（CPU密集型任务）
+        pattern_id, bead_pattern, stats, stats_without_bg, subject_size = await run_in_thread_pool(
+            _generate_pattern,
+            preprocess_path,
+            new_width,
+            new_height,
+            2.6,  # 默认拼豆大小
+            use_custom,
+            None,  # 不使用品牌过滤（旧API）
+            None   # 不使用系列过滤（旧API）
+        )
         
-        # 生成拼豆图案
-        bead_pattern = BeadPattern(new_width, new_height)
-        bead_pattern.from_matched_colors(matched_colors)
-        
-        # 保存图案
-        pattern_id = str(uuid.uuid4())
+        # 保存图案（这个操作很快，不需要在线程池中执行）
         patterns_store[pattern_id] = {
             "pattern": bead_pattern,
             "file_id": file_id,
@@ -653,21 +755,6 @@ async def process_image(
                 "use_custom": use_custom
             }
         }
-        
-        # 生成可视化图像（显示编号和不显示编号两个版本）
-        viz_image_with_labels = bead_pattern.to_image(cell_size=10, show_labels=True, show_grid=True)
-        viz_path_with_labels = f"static/output/{pattern_id}_viz.png"
-        viz_image_with_labels.save(viz_path_with_labels)
-        
-        # 生成不显示编号的版本（用于生成实物效果图）
-        viz_image_no_labels = bead_pattern.to_image(cell_size=10, show_labels=False, show_grid=True)
-        viz_path_no_labels = f"static/output/{pattern_id}_viz_no_labels.png"
-        viz_image_no_labels.save(viz_path_no_labels)
-        
-        # 获取统计信息（包含主体尺寸）
-        stats = bead_pattern.get_color_statistics(exclude_background=False)
-        stats_without_bg = bead_pattern.get_color_statistics(exclude_background=True)
-        subject_size = bead_pattern.get_subject_size()
         
         return {
             "pattern_id": pattern_id,
@@ -729,12 +816,37 @@ async def optimize_pattern(
 
 
 @app.get("/api/colors")
-async def get_colors(include_custom: bool = True):
+async def get_colors(include_custom: bool = True, 
+                    brand: Optional[str] = None,
+                    series: Optional[str] = None):
     """
-    获取色板列表
+    获取色板列表（支持按品牌和系列过滤）
+    
+    Args:
+        include_custom: 是否包含自定义颜色
+        brand: 品牌名称（如"COCO"），如果为"自定义"则只返回自定义色板
+        series: 系列名称（如"291"），需要与brand一起使用
     """
-    colors = color_matcher.get_all_colors(include_custom=include_custom)
+    colors = color_matcher.get_all_colors(include_custom=include_custom, 
+                                         brand=brand, 
+                                         series=series)
     return {"colors": colors}
+
+@app.get("/api/colors/custom")
+async def get_custom_colors():
+    """
+    获取自定义色板列表（只返回用户自定义的颜色）
+    """
+    # 直接返回 custom_colors，不包含标准色板
+    return {"colors": color_matcher.custom_colors.copy()}
+
+@app.get("/api/colors/brands")
+async def get_brands():
+    """
+    获取所有品牌及其系列列表
+    """
+    brands_map = color_matcher.get_brands_and_series()
+    return {"brands": brands_map}
 
 
 @app.post("/api/colors/custom")
@@ -885,16 +997,17 @@ async def generate_print(
     
     pattern = patterns_store[pattern_id]["pattern"]
     
-    # 生成PDF
+    # 在线程池中执行PDF生成（CPU密集型任务）
     pdf_path = f"static/output/{pattern_id}_print.pdf"
-    printer.generate_pdf(
+    await run_in_thread_pool(
+        _generate_pdf,
         pattern,
         pdf_path,
-        paper_size=params.paper_size,
-        margin_mm=params.margin_mm,
-        show_grid=params.show_grid,
-        show_labels=params.show_labels,
-        dpi=params.dpi
+        params.paper_size,
+        params.margin_mm,
+        params.show_grid,
+        params.show_labels,
+        params.dpi
     )
     
     return FileResponse(
@@ -925,8 +1038,13 @@ async def export_pattern(pattern_id: str, format: str = "json"):
         return FileResponse(csv_path, media_type="text/csv",
                           filename=f"pattern_{pattern_id}.csv")
     elif format == "png":
-        png_path = f"static/output/{pattern_id}_export.png"
-        pattern.save_image(png_path, cell_size=20, show_labels=True, show_grid=True)
+        # 在线程池中执行PNG导出（CPU密集型任务）
+        def _save_png():
+            png_path = f"static/output/{pattern_id}_export.png"
+            pattern.save_image(png_path, cell_size=20, show_labels=True, show_grid=True)
+            return png_path
+        
+        png_path = await run_in_thread_pool(_save_png)
         return FileResponse(png_path, media_type="image/png",
                           filename=f"pattern_{pattern_id}.png")
     else:
@@ -939,7 +1057,7 @@ async def print_preview(
     paper_size: str = "A4",
     margin_mm: float = 10.0,
     show_grid: bool = True,
-    show_labels: bool = False
+    show_labels: bool = True  # 默认显示色号
 ):
     """
     打印预览
@@ -949,17 +1067,20 @@ async def print_preview(
     
     pattern = patterns_store[pattern_id]["pattern"]
     
-    # 生成预览图像
-    preview_image = printer.generate_print_image(
-        pattern,
-        paper_size=paper_size,
-        margin_mm=margin_mm,
-        show_grid=show_grid,
-        show_labels=show_labels
-    )
+    # 在线程池中执行预览图像生成（CPU密集型任务）
+    def _generate_preview_image():
+        preview_image = printer.generate_print_image(
+            pattern,
+            paper_size=paper_size,
+            margin_mm=margin_mm,
+            show_grid=show_grid,
+            show_labels=show_labels
+        )
+        preview_path = f"static/output/{pattern_id}_preview.png"
+        preview_image.save(preview_path)
+        return preview_path
     
-    preview_path = f"static/output/{pattern_id}_preview.png"
-    preview_image.save(preview_path)
+    preview_path = await run_in_thread_pool(_generate_preview_image)
     
     return FileResponse(preview_path, media_type="image/png")
 
@@ -993,10 +1114,13 @@ async def step_generate_render(
         # 获取图案的可视化图片路径（使用不显示编号的版本）
         viz_path = f"static/output/{pattern_id}_viz_no_labels.png"
         if not Path(viz_path).exists():
-            # 如果可视化图片不存在，重新生成（不显示编号的版本）
+            # 如果可视化图片不存在，在线程池中重新生成（不显示编号的版本）
             pattern = patterns_store[pattern_id]["pattern"]
-            viz_image = pattern.to_image(cell_size=10, show_labels=False, show_grid=True)
-            viz_image.save(viz_path)
+            def _regenerate_viz():
+                viz_image = pattern.to_image(cell_size=10, show_labels=False, show_grid=True)
+                viz_image.save(viz_path)
+                return viz_path
+            await run_in_thread_pool(_regenerate_viz)
         
         # 计算aspectRatio（基于图案尺寸）
         pattern = patterns_store[pattern_id]["pattern"]
@@ -1004,24 +1128,34 @@ async def step_generate_render(
         
         logger.info(f"开始生成实物效果图: pattern_id={pattern_id}, prompt={prompt}")
         
-        # 调用Nano Banana API生成实物效果图
-        result = nano_banana_client.generate_image(
-            prompt=prompt,
-            image_path=viz_path,  # 使用拼豆图案的可视化图片作为参考
-            model=model,
-            aspect_ratio=aspect_ratio,
-            image_size=image_size,
-            timeout=300  # 5分钟超时
-        )
-        
-        # 下载生成的图片
-        if result.get("results") and len(result["results"]) > 0:
-            generated_image_url = result["results"][0]["url"]
-            render_file_id = str(uuid.uuid4())
-            downloaded_path = nano_banana_client.download_image(
-                generated_image_url,
-                save_path=f"static/output/render_{render_file_id}.png"
+        # 在线程池中执行Nano Banana API调用
+        def _call_nano_banana_render():
+            # 调用Nano Banana API生成实物效果图
+            result = nano_banana_client.generate_image(
+                prompt=prompt,
+                image_path=viz_path,  # 使用拼豆图案的可视化图片作为参考
+                model=model,
+                aspect_ratio=aspect_ratio,
+                image_size=image_size,
+                timeout=300  # 5分钟超时
             )
+            
+            # 下载生成的图片
+            if result.get("results") and len(result["results"]) > 0:
+                generated_image_url = result["results"][0]["url"]
+                render_file_id = str(uuid.uuid4())
+                downloaded_path = nano_banana_client.download_image(
+                    generated_image_url,
+                    save_path=f"static/output/render_{render_file_id}.png"
+                )
+                return render_file_id, downloaded_path
+            else:
+                raise ValueError("Nano Banana API未返回图片")
+        
+        render_file_id, downloaded_path = await run_in_thread_pool(_call_nano_banana_render)
+        
+        # 处理结果
+        if downloaded_path:
             
             # 保存步骤结果
             if file_id not in step_results:

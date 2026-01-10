@@ -43,6 +43,37 @@
             </div>
         </div>
         
+        <!-- 色板选择（在开头） -->
+        <div class="section">
+            <h2>🎨 选择拼豆色板</h2>
+            <div class="controls">
+                <div class="control-group">
+                    <label>品牌</label>
+                    <select id="colorBrand" style="width: 100%;" onchange="updateColorSeries()">
+                        <option value="">全部品牌</option>
+                        <option value="自定义">自定义色板</option>
+                    </select>
+                    <p style="font-size: 0.8em; color: #666; margin-top: 5px;">
+                        选择拼豆品牌，将只使用该品牌的颜色进行匹配
+                    </p>
+                </div>
+                <div class="control-group">
+                    <label>色数系列</label>
+                    <select id="colorSeries" style="width: 100%;" disabled>
+                        <option value="">请先选择品牌</option>
+                    </select>
+                    <p style="font-size: 0.8em; color: #666; margin-top: 5px;">
+                        选择该品牌的色数系列（如291色、120色等）
+                    </p>
+                </div>
+            </div>
+            <div id="colorPaletteInfo" style="margin-top: 10px; padding: 10px; background: #f5f5f5; border-radius: 5px; display: none;">
+                <p style="margin: 0; color: #666; font-size: 0.9em;">
+                    <span id="selectedColorCount">0</span> 种颜色可用
+                </p>
+            </div>
+        </div>
+        
         <div class="section">
             <h2>1. 上传图片</h2>
             <div class="upload-area" id="uploadArea">
@@ -306,19 +337,14 @@
                 <span class="toggle-icon" id="colorPaletteToggleIcon">▼</span>
             </div>
             <div class="collapsible-content" id="colorPaletteContent">
-                <div class="palette-info">
-                    <h3>色板配置信息</h3>
-                    <p><strong>标准色板:</strong> <span id="standardColorCount">加载中...</span> 种颜色</p>
-                    <p><strong>自定义色板:</strong> <span id="customColorCount">加载中...</span> 种颜色</p>
-                    <p><strong>总颜色数:</strong> <span id="totalColorCount">加载中...</span> 种颜色</p>
-                    <p><strong>拼豆尺寸:</strong> 2.6mm (小拼豆) / 5.0mm (标准拼豆)</p>
+                <div class="palette-info" style="padding: 10px; background: #f5f5f5; border-radius: 5px; margin-bottom: 15px;">
+                    <p style="margin: 5px 0;"><strong>标准色板:</strong> <span id="standardColorCount">加载中...</span> 种颜色</p>
+                    <p style="margin: 5px 0;"><strong>自定义色板:</strong> <span id="customColorCount">加载中...</span> 种颜色</p>
+                    <p style="margin: 5px 0; color: #666; font-size: 0.9em;">※ 自定义色板只显示您手动添加的颜色，标准色板包含所有品牌颜色</p>
                 </div>
-                <div class="color-palette-grid" id="colorPaletteGrid">
-                    <p style="grid-column: 1 / -1; text-align: center; color: #666;">加载中...</p>
-                </div>
-                <div class="add-color-form">
-                    <h3>添加自定义颜色</h3>
-                    <div class="controls">
+                <div class="add-color-form" style="margin-bottom: 20px;">
+                    <h3 style="margin-top: 0;">添加自定义颜色</h3>
+                    <div class="controls" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
                         <div class="control-group">
                             <label>中文名称</label>
                             <input type="text" id="newColorNameZh" placeholder="例如：红色" style="width: 100%;">
@@ -344,10 +370,19 @@
                             <div style="width: 100%; height: 50px; border: 2px solid #ddd; border-radius: 5px; background: #fff;" id="newColorPreview"></div>
                         </div>
                     </div>
-                    <div class="button-group">
+                    <div class="button-group" style="margin-top: 10px;">
                         <button class="btn btn-primary" id="addColorBtn">添加颜色</button>
                     </div>
                 </div>
+                
+                <!-- 自定义颜色列表（只在有自定义颜色时显示） -->
+                <div id="customColorListSection" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd; display: none;">
+                    <h3>我的自定义颜色</h3>
+                    <div class="color-palette-grid" id="colorPaletteGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px; margin-top: 15px;">
+                        <p style="grid-column: 1 / -1; text-align: center; color: #666;">加载中...</p>
+                    </div>
+                </div>
+                
                 <div class="import-export-section" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd;">
                     <h3>导入/导出自定义色板</h3>
                     <div class="button-group" style="display: flex; gap: 10px; flex-wrap: wrap;">

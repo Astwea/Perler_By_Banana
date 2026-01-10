@@ -346,30 +346,32 @@ class BeadPattern:
         image = Image.new('RGB', (img_width, img_height), (255, 255, 255))
         draw = ImageDraw.Draw(image)
         
-        # 尝试加载字体，如果失败则使用默认字体
-        try:
-            # 根据cell_size调整字体大小
-            if cell_size <= 15:
-                font_size = max(6, cell_size // 3)
-            elif cell_size <= 30:
-                font_size = max(8, cell_size // 2)
-            else:
-                font_size = max(12, cell_size // 2)
-            
-            # 尝试使用系统字体
+        # 尝试加载默认字体，如果失败则使用默认字体
+        # 基础字体大小根据cell_size调整
+        if cell_size <= 15:
+            base_font_size = max(6, cell_size // 3)
+        elif cell_size <= 30:
+            base_font_size = max(8, cell_size // 2)
+        else:
+            base_font_size = max(12, cell_size // 2)
+        
+        def get_font(size):
+            """获取指定大小的字体"""
             try:
-                font = ImageFont.truetype("arial.ttf", font_size)
-            except:
                 try:
-                    font = ImageFont.truetype("/System/Library/Fonts/Arial.ttf", font_size)
+                    return ImageFont.truetype("arial.ttf", size)
                 except:
                     try:
-                        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", font_size)
+                        return ImageFont.truetype("/System/Library/Fonts/Arial.ttf", size)
                     except:
-                        # 使用默认字体
-                        font = ImageFont.load_default()
-        except:
-            font = ImageFont.load_default()
+                        try:
+                            return ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", size)
+                        except:
+                            return ImageFont.load_default()
+            except:
+                return ImageFont.load_default()
+        
+        base_font = get_font(base_font_size)
         
         # 绘制拼豆
         for y in range(self.height):
@@ -387,12 +389,47 @@ class BeadPattern:
                     
                     # 显示标签（默认显示编号）
                     if show_labels:
+                        # 优先使用完整的code（包含品牌信息），如果没有则使用color_name
                         code = bead.get('code', '')
+                        if not code:
+                            # 如果没有code，尝试从品牌和色号构建
+                            brand = bead.get('brand', '')
+                            series = bead.get('series', '')
+                            color_name = bead.get('color_name', '')
+                            if brand and series and color_name:
+                                code = f"{brand}-{series}-{color_name}"
+                            elif color_name:
+                                code = color_name
+                        
                         if code:
-                            # 使用字体计算文字位置（居中）
-                            bbox = draw.textbbox((0, 0), code, font=font)
+                            # 统一只显示色号编号（最后一部分），不显示品牌和系列信息
+                            # 例如：COCO-291-A01 -> A01, Mard-120-B05 -> B05
+                            parts = code.split('-')
+                            if len(parts) > 1:
+                                display_code = parts[-1]  # 只显示最后一部分（色号编号）
+                            else:
+                                # 如果没有分隔符，直接使用code（可能是自定义色号）
+                                display_code = code
+                            
+                            # 使用基础字体计算文字位置（居中）
+                            font = base_font
+                            bbox = draw.textbbox((0, 0), display_code, font=font)
                             text_width = bbox[2] - bbox[0]
                             text_height = bbox[3] - bbox[1]
+                            
+                            # 确保文字不超出格子，如果太宽则缩小字体
+                            if text_width > cell_size * 0.9:
+                                # 如果文字太宽，缩小字体
+                                scale = (cell_size * 0.9) / text_width
+                                adjusted_font_size = int(base_font_size * scale)
+                                if adjusted_font_size < 6:
+                                    adjusted_font_size = 6  # 最小字体大小
+                                font = get_font(adjusted_font_size)
+                                # 重新计算
+                                bbox = draw.textbbox((0, 0), display_code, font=font)
+                                text_width = bbox[2] - bbox[0]
+                                text_height = bbox[3] - bbox[1]
+                            
                             text_x = x * cell_size + (cell_size - text_width) // 2
                             text_y = y * cell_size + (cell_size - text_height) // 2
                             
@@ -405,16 +442,19 @@ class BeadPattern:
                                 # 背景较暗，使用浅色文字
                                 text_color = (255, 255, 255)
                             
-                            # 如果对比度不够，添加描边
-                            if abs(brightness - 128) < 50:
-                                # 添加白色描边
-                                for adj_x in [-1, 0, 1]:
-                                    for adj_y in [-1, 0, 1]:
-                                        if adj_x != 0 or adj_y != 0:
-                                            draw.text((text_x + adj_x, text_y + adj_y), code, 
-                                                     fill=(255, 255, 255), font=font)
+                            # 始终添加描边以确保文字清晰可见
+                            stroke_width = max(1, cell_size // 30)
+                            # 先绘制描边（四周）
+                            for adj_x in range(-stroke_width, stroke_width + 1):
+                                for adj_y in range(-stroke_width, stroke_width + 1):
+                                    if adj_x != 0 or adj_y != 0:
+                                        # 描边颜色与文字颜色相反
+                                        stroke_color = (255, 255, 255) if text_color == (0, 0, 0) else (0, 0, 0)
+                                        draw.text((text_x + adj_x, text_y + adj_y), display_code, 
+                                                 fill=stroke_color, font=font)
                             
-                            draw.text((text_x, text_y), code, fill=text_color, font=font)
+                            # 再绘制文字
+                            draw.text((text_x, text_y), display_code, fill=text_color, font=font)
         
         # 绘制网格线
         if show_grid:

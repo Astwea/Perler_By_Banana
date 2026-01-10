@@ -542,20 +542,22 @@ function setupExportButtons() {
     const printPreviewBtn = document.getElementById('printPreviewBtn');
     const printBtn = document.getElementById('printBtn');
     
+    // 使用 onclick 属性，避免重复绑定问题
     if (exportJsonBtn) {
-        exportJsonBtn.addEventListener('click', () => exportPattern('json'));
+        exportJsonBtn.onclick = () => exportPattern('json');
     }
     if (exportCsvBtn) {
-        exportCsvBtn.addEventListener('click', () => exportPattern('csv'));
+        exportCsvBtn.onclick = () => exportPattern('csv');
     }
     if (exportPngBtn) {
-        exportPngBtn.addEventListener('click', () => exportPattern('png'));
+        exportPngBtn.onclick = () => exportPattern('png');
     }
     if (printPreviewBtn) {
-        printPreviewBtn.addEventListener('click', showPrintPreview);
+        printPreviewBtn.onclick = showPrintPreview;
     }
     if (printBtn) {
-        printBtn.addEventListener('click', generatePrint);
+        printBtn.onclick = generatePrint;
+        console.log('PDF按钮事件已绑定:', printBtn);
     }
 }
 
@@ -797,7 +799,7 @@ async function showPrintPreview() {
             paper_size: 'A4',
             margin_mm: '10.0',
             show_grid: 'true',
-            show_labels: 'false'
+            show_labels: 'true'  // 默认显示色号
         });
         
         const response = await fetch(`/api/pattern/${currentPatternId}/print-preview?${params}`);
@@ -830,7 +832,7 @@ async function generatePrint() {
             paper_size: 'A4',
             margin_mm: 10.0,
             show_grid: true,
-            show_labels: false,
+            show_labels: true,  // 默认显示色号
             dpi: 300
         };
         
@@ -862,7 +864,8 @@ async function generatePrint() {
 
 // 工具函数
 function showLoading(message) {
-    const errorDiv = document.querySelector('.error');
+    // 只删除固定位置的错误提示，不要删除步骤区域的错误状态
+    const errorDiv = document.getElementById('globalErrorMessage');
     if (errorDiv) errorDiv.remove();
     
     const loading = document.createElement('div');
@@ -882,7 +885,12 @@ function showError(message) {
     const loading = document.getElementById('loadingMessage');
     if (loading) loading.remove();
     
+    // 只删除固定位置的错误提示，不要删除步骤区域的错误状态
+    const existingError = document.getElementById('globalErrorMessage');
+    if (existingError) existingError.remove();
+    
     const error = document.createElement('div');
+    error.id = 'globalErrorMessage'; // 添加ID以便后续识别
     error.className = 'error';
     error.textContent = message;
     error.style.position = 'fixed';
@@ -893,19 +901,14 @@ function showError(message) {
     error.style.maxWidth = '90%';
     error.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
     
-    const container = document.querySelector('.container');
-    if (container) {
-        const existing = document.querySelector('.error');
-        if (existing && existing.style.position === 'fixed') existing.remove();
-        document.body.appendChild(error);
-        
-        // 5秒后自动消失
-        setTimeout(() => {
-            if (error.parentNode) {
-                error.remove();
-            }
-        }, 5000);
-    }
+    document.body.appendChild(error);
+    
+    // 5秒后自动消失
+    setTimeout(() => {
+        if (error.parentNode) {
+            error.remove();
+        }
+    }, 5000);
 }
 
 function showSuccess(message) {
@@ -967,10 +970,17 @@ async function runNanoBanana() {
     try {
         // 确保步骤区域可见
         console.log('开始执行Nano Banana步骤，步骤区域:', stepSection);
-        stepSection.style.display = '';
+        stepSection.style.display = 'block'; // 使用 block 确保可见
         stepSection.style.visibility = 'visible';
+        stepSection.style.opacity = '1';
         stepSection.classList.remove('error', 'completed', 'hidden');
         stepSection.classList.add('running');
+        // 确保父元素也可见
+        const parent = stepSection.parentElement;
+        if (parent) {
+            parent.style.display = '';
+            parent.style.visibility = 'visible';
+        }
         refreshBtn.disabled = true;
         resultDiv.innerHTML = '<div class="loading">正在调用Nano Banana API转换图片...</div>';
         console.log('步骤区域状态 - display:', stepSection.style.display, 'visibility:', stepSection.style.visibility, 'classList:', stepSection.classList.toString());
@@ -1041,16 +1051,30 @@ async function runNanoBanana() {
     } catch (error) {
         console.error('Nano Banana步骤出错:', error);
         if (stepSection) {
-            stepSection.classList.remove('running');
+            // 强制确保步骤区域可见
+            stepSection.classList.remove('running', 'completed', 'hidden');
             stepSection.classList.add('error');
-            stepSection.style.display = ''; // 确保可见
+            stepSection.style.display = 'block'; // 使用 block 而不是空字符串
             stepSection.style.visibility = 'visible';
-            console.log('错误处理后的步骤区域状态 - display:', stepSection.style.display, 'visibility:', stepSection.style.visibility);
+            stepSection.style.opacity = '1';
+            // 确保父元素也可见
+            const parent = stepSection.parentElement;
+            if (parent) {
+                parent.style.display = '';
+                parent.style.visibility = 'visible';
+            }
+            console.log('错误处理后的步骤区域状态 - display:', stepSection.style.display, 'visibility:', stepSection.style.visibility, 'classList:', stepSection.classList.toString());
         }
         if (resultDiv) {
-            resultDiv.innerHTML = `<div class="error">错误: ${error.message}</div>`;
+            resultDiv.innerHTML = `<div class="error" style="padding: 15px; background: #fee; border: 1px solid #fcc; border-radius: 5px; color: #c33;">
+                <strong>错误:</strong> ${error.message}<br>
+                <small style="color: #999; margin-top: 5px; display: block;">提示: 请先配置Nano Banana API才能使用此功能</small>
+            </div>`;
         }
-        if (refreshBtn) refreshBtn.disabled = false;
+        if (refreshBtn) {
+            refreshBtn.disabled = false;
+            refreshBtn.style.display = ''; // 确保刷新按钮可见
+        }
         showError('Nano Banana转换失败: ' + error.message);
     }
 }
@@ -1186,6 +1210,15 @@ async function runGeneratePattern() {
         const beadSizeSelect = document.getElementById('beadSize');
         const beadSize = beadSizeSelect ? parseFloat(beadSizeSelect.value) : 2.6;
         formData.append('bead_size_mm', beadSize);
+        // 添加品牌和系列参数
+        const brandSelect = document.getElementById('colorBrand');
+        const seriesSelect = document.getElementById('colorSeries');
+        if (brandSelect && brandSelect.value) {
+            formData.append('brand', brandSelect.value);
+        }
+        if (seriesSelect && seriesSelect.value) {
+            formData.append('series', seriesSelect.value);
+        }
         
         const requestOptions = {
             method: 'POST',
@@ -1234,7 +1267,7 @@ async function runGeneratePattern() {
             <div class="result-info">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                     <h3 style="margin: 0;">✓ 图案生成完成</h3>
-                    <button class="btn btn-secondary" id="toggleLabelsBtn" onclick="togglePatternLabels()" style="padding: 8px 16px; font-size: 14px;">
+                    <button class="btn btn-secondary" id="toggleLabelsBtn" style="padding: 8px 16px; font-size: 14px;">
                         ${showLabels ? '隐藏编号' : '显示编号'}
                     </button>
                 </div>
@@ -1266,17 +1299,30 @@ async function runGeneratePattern() {
         `;
         
         // 保存URL到全局变量以便切换（确保使用完整路径）
+        // 确保vizUrlWithLabels和vizUrlNoLabels都存在且不同
         const baseUrl = window.location.origin;
-        window.currentPatternVizUrlWithLabels = vizUrlWithLabels.startsWith('http') ? vizUrlWithLabels : baseUrl + vizUrlWithLabels;
-        window.currentPatternVizUrlNoLabels = (vizUrlNoLabels && vizUrlNoLabels !== vizUrlWithLabels) 
+        
+        // 标准化URL（确保使用完整路径）
+        const fullVizUrlWithLabels = vizUrlWithLabels.startsWith('http') ? vizUrlWithLabels : baseUrl + vizUrlWithLabels;
+        const fullVizUrlNoLabels = (vizUrlNoLabels && vizUrlNoLabels !== vizUrlWithLabels) 
             ? (vizUrlNoLabels.startsWith('http') ? vizUrlNoLabels : baseUrl + vizUrlNoLabels)
             : null;
+        
+        // 保存到全局变量（确保在图片加载前就设置好）
+        window.currentPatternVizUrlWithLabels = fullVizUrlWithLabels;
+        window.currentPatternVizUrlNoLabels = fullVizUrlNoLabels;
         window.currentPatternShowLabels = showLabels;
         
+        // 保存当前pattern_id以便后续使用
+        window.currentPatternId = data.pattern_id;
+        
         console.log('保存图案URL:', {
+            patternId: data.pattern_id,
             withLabels: window.currentPatternVizUrlWithLabels,
             noLabels: window.currentPatternVizUrlNoLabels,
-            showLabels: window.currentPatternShowLabels
+            showLabels: window.currentPatternShowLabels,
+            vizUrlWithLabels: vizUrlWithLabels,
+            vizUrlNoLabels: vizUrlNoLabels
         });
         
         stepSection.classList.remove('running');
@@ -1285,16 +1331,27 @@ async function runGeneratePattern() {
         stepSection.style.visibility = 'visible';
         refreshBtn.disabled = false;
         
+        // 确保切换编号按钮的事件正确绑定（使用onclick属性，避免重复绑定）
+        setTimeout(() => {
+            const toggleLabelsBtn = document.getElementById('toggleLabelsBtn');
+            if (toggleLabelsBtn) {
+                toggleLabelsBtn.onclick = togglePatternLabels;
+                console.log('切换编号按钮事件已绑定:', toggleLabelsBtn);
+            }
+        }, 100);
+        
         // 启用生成实物效果图的刷新按钮
         const refreshGenerateRenderBtn = document.getElementById('refreshGenerateRenderBtn');
         if (refreshGenerateRenderBtn) {
             refreshGenerateRenderBtn.disabled = false;
         }
         
-        // 显示导出选项（如果存在）
+        // 显示导出选项（如果存在）并确保按钮事件绑定
         const resultSection = document.getElementById('resultSection');
         if (resultSection) {
             resultSection.classList.remove('hidden');
+            // 确保导出按钮事件已绑定（以防在显示后才绑定）
+            setupExportButtons();
         }
         
         // 如果不在自动执行流程中，显示成功消息
@@ -1355,10 +1412,17 @@ async function runGenerateRender() {
     try {
         // 确保步骤区域可见
         console.log('开始执行生成实物效果图步骤，步骤区域:', stepSection);
-        stepSection.style.display = '';
+        stepSection.style.display = 'block'; // 使用 block 确保可见
         stepSection.style.visibility = 'visible';
+        stepSection.style.opacity = '1';
         stepSection.classList.remove('error', 'completed', 'hidden');
         stepSection.classList.add('running');
+        // 确保父元素也可见
+        const parent = stepSection.parentElement;
+        if (parent) {
+            parent.style.display = '';
+            parent.style.visibility = 'visible';
+        }
         refreshBtn.disabled = true;
         resultDiv.innerHTML = '<div class="loading">正在使用Nano Banana生成实物效果图...</div>';
         
@@ -1418,7 +1482,7 @@ async function runGenerateRender() {
         
         stepSection.classList.remove('running');
         stepSection.classList.add('completed');
-        stepSection.style.display = '';
+        stepSection.style.display = 'block'; // 使用 block 确保可见
         stepSection.style.visibility = 'visible';
         refreshBtn.disabled = false;
         
@@ -1432,16 +1496,30 @@ async function runGenerateRender() {
     } catch (error) {
         console.error('生成实物效果图出错:', error);
         if (stepSection) {
-            stepSection.classList.remove('running');
+            // 强制确保步骤区域可见
+            stepSection.classList.remove('running', 'completed', 'hidden');
             stepSection.classList.add('error');
-            stepSection.style.display = '';
+            stepSection.style.display = 'block'; // 使用 block 而不是空字符串
             stepSection.style.visibility = 'visible';
-            console.log('错误处理后的步骤区域状态 - display:', stepSection.style.display, 'visibility:', stepSection.style.visibility);
+            stepSection.style.opacity = '1';
+            // 确保父元素也可见
+            const parent = stepSection.parentElement;
+            if (parent) {
+                parent.style.display = '';
+                parent.style.visibility = 'visible';
+            }
+            console.log('错误处理后的步骤区域状态 - display:', stepSection.style.display, 'visibility:', stepSection.style.visibility, 'classList:', stepSection.classList.toString());
         }
         if (resultDiv) {
-            resultDiv.innerHTML = `<div class="error">错误: ${error.message}</div>`;
+            resultDiv.innerHTML = `<div class="error" style="padding: 15px; background: #fee; border: 1px solid #fcc; border-radius: 5px; color: #c33;">
+                <strong>错误:</strong> ${error.message}<br>
+                <small style="color: #999; margin-top: 5px; display: block;">提示: 请先配置Nano Banana API才能使用此功能</small>
+            </div>`;
         }
-        if (refreshBtn) refreshBtn.disabled = false;
+        if (refreshBtn) {
+            refreshBtn.disabled = false;
+            refreshBtn.style.display = ''; // 确保刷新按钮可见
+        }
         showError('实物效果图生成失败: ' + error.message);
     }
 }
@@ -1719,42 +1797,57 @@ function resetImageZoom(viewer) {
 // 加载色板信息
 async function loadColorPalette() {
     try {
-        const response = await fetch('/api/colors?include_custom=true');
-        if (!response.ok) return;
-        
-        const data = await response.json();
-        const colors = data.colors || [];
-        
-        // 分离标准色和自定义色
-        const standardColors = colors.filter(c => !c.hasOwnProperty('id') || c.id < 1000);
-        const customColors = colors.filter(c => c.hasOwnProperty('id') && c.id >= 1000);
-        
-        // 更新统计信息
-        document.getElementById('standardColorCount').textContent = standardColors.length;
-        document.getElementById('customColorCount').textContent = customColors.length;
-        document.getElementById('totalColorCount').textContent = colors.length;
-        
-        // 显示自定义色板
-        const grid = document.getElementById('colorPaletteGrid');
-        if (!grid) return;
-        
-        if (customColors.length === 0) {
-            grid.innerHTML = '<p style="grid-column: 1 / -1; text-align: center; color: #666;">暂无自定义颜色</p>';
-            return;
+        // 获取标准色板数量（不包含自定义）
+        const standardResponse = await fetch('/api/colors?include_custom=false');
+        let standardCount = 0;
+        if (standardResponse.ok) {
+            const standardData = await standardResponse.json();
+            standardCount = standardData.colors ? standardData.colors.length : 0;
         }
         
-        grid.innerHTML = customColors.map(color => `
-            <div class="color-item">
-                <div class="color-preview" style="background: rgb(${color.rgb.join(',')});" 
-                     onclick="toggleColorZoom(this)" title="点击放大"></div>
-                <div class="color-info">
-                    <div class="color-code">${color.code}</div>
-                    <div class="color-name">${color.name_zh || color.name_en}</div>
-                    <div class="color-rgb">RGB: ${color.rgb.join(', ')}</div>
-                    <button class="delete-color-btn" onclick="deleteCustomColor(${color.id})">删除</button>
+        // 直接获取自定义色板（使用专门的API端点，只返回用户自定义的颜色）
+        const customResponse = await fetch('/api/colors/custom');
+        let customColors = [];
+        if (customResponse.ok) {
+            const customData = await customResponse.json();
+            customColors = customData.colors || [];
+        }
+        
+        // 更新统计信息
+        const standardColorCountEl = document.getElementById('standardColorCount');
+        const customColorCountEl = document.getElementById('customColorCount');
+        const totalColorCountEl = document.getElementById('totalColorCount');
+        
+        if (standardColorCountEl) standardColorCountEl.textContent = standardCount;
+        if (customColorCountEl) customColorCountEl.textContent = customColors.length;
+        if (totalColorCountEl) totalColorCountEl.textContent = standardCount + customColors.length;
+        
+        // 显示自定义色板（只显示真正的自定义颜色）
+        const grid = document.getElementById('colorPaletteGrid');
+        const customColorListSection = document.getElementById('customColorListSection');
+        
+        if (!grid || !customColorListSection) return;
+        
+        if (customColors.length === 0) {
+            // 没有自定义颜色，隐藏列表区域
+            customColorListSection.style.display = 'none';
+            grid.innerHTML = '';
+        } else {
+            // 有自定义颜色，显示列表区域
+            customColorListSection.style.display = 'block';
+            grid.innerHTML = customColors.map(color => `
+                <div class="color-item" style="background: white; border-radius: 5px; padding: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                    <div class="color-preview" style="width: 100%; height: 60px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 8px; background: rgb(${color.rgb.join(',')}); cursor: pointer;" 
+                         onclick="toggleColorZoom(this)" title="点击放大"></div>
+                    <div class="color-info" style="font-size: 0.85em;">
+                        <div class="color-code" style="font-weight: 600; margin-bottom: 4px;">${color.code}</div>
+                        <div class="color-name" style="color: #666; margin-bottom: 4px;">${color.name_zh || color.name_en || ''}</div>
+                        <div class="color-rgb" style="color: #999; font-size: 0.9em; margin-bottom: 8px;">RGB: ${color.rgb.join(', ')}</div>
+                        <button class="delete-color-btn" onclick="deleteCustomColor(${color.id})" style="width: 100%; padding: 5px; background: #ff4444; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 0.9em;">删除</button>
+                    </div>
                 </div>
-            </div>
-        `).join('');
+            `).join('');
+        }
         
     } catch (error) {
         console.error('加载色板失败:', error);
@@ -1853,37 +1946,36 @@ function togglePatternLabels() {
         return;
     }
     
-    // 获取当前图片的完整URL
-    const currentSrc = patternImage.src;
+    // 获取当前图片的完整URL（移除查询参数）
+    const currentSrc = patternImage.src.split('?')[0];
     
-    // 检查全局变量是否存在，如果不存在，尝试从当前图片URL推断
-    if (!window.currentPatternVizUrlWithLabels) {
+    // 优先使用全局变量，如果不存在，尝试从当前图片URL推断
+    if (!window.currentPatternVizUrlWithLabels || !window.currentPatternVizUrlNoLabels) {
+        console.warn('全局变量未设置，尝试从当前URL推断');
+        
         // 尝试从当前图片URL推断
         if (currentSrc.includes('_viz.png') && !currentSrc.includes('_viz_no_labels')) {
             // 当前是有编号版本
-            window.currentPatternVizUrlWithLabels = currentSrc.split('?')[0]; // 移除可能的查询参数
-            window.currentPatternVizUrlNoLabels = currentSrc.replace('_viz.png', '_viz_no_labels.png').split('?')[0];
+            const baseUrl = window.location.origin;
+            window.currentPatternVizUrlWithLabels = currentSrc.startsWith('http') ? currentSrc : baseUrl + currentSrc;
+            window.currentPatternVizUrlNoLabels = currentSrc.replace('_viz.png', '_viz_no_labels.png');
+            window.currentPatternVizUrlNoLabels = window.currentPatternVizUrlNoLabels.startsWith('http') 
+                ? window.currentPatternVizUrlNoLabels 
+                : baseUrl + window.currentPatternVizUrlNoLabels;
             window.currentPatternShowLabels = true;
         } else if (currentSrc.includes('_viz_no_labels')) {
             // 当前是无编号版本
-            window.currentPatternVizUrlNoLabels = currentSrc.split('?')[0];
-            window.currentPatternVizUrlWithLabels = currentSrc.replace('_viz_no_labels.png', '_viz.png').split('?')[0];
+            const baseUrl = window.location.origin;
+            window.currentPatternVizUrlNoLabels = currentSrc.startsWith('http') ? currentSrc : baseUrl + currentSrc;
+            window.currentPatternVizUrlWithLabels = currentSrc.replace('_viz_no_labels.png', '_viz.png');
+            window.currentPatternVizUrlWithLabels = window.currentPatternVizUrlWithLabels.startsWith('http')
+                ? window.currentPatternVizUrlWithLabels
+                : baseUrl + window.currentPatternVizUrlWithLabels;
             window.currentPatternShowLabels = false;
         } else {
-            console.warn('无法推断图片URL，尝试从URL结构推断:', currentSrc);
-            // 尝试更通用的方式
-            const urlParts = currentSrc.split('/');
-            const filename = urlParts[urlParts.length - 1].split('?')[0];
-            if (filename.includes('_viz.png')) {
-                const basePath = currentSrc.substring(0, currentSrc.lastIndexOf('/'));
-                window.currentPatternVizUrlWithLabels = basePath + '/' + filename.replace('_viz_no_labels.png', '_viz.png').replace('_viz.png', '_viz.png');
-                window.currentPatternVizUrlNoLabels = basePath + '/' + filename.replace('_viz.png', '_viz_no_labels.png');
-                window.currentPatternShowLabels = !filename.includes('_viz_no_labels');
-            } else {
-                console.error('无法推断图片URL，切换功能暂时不可用');
-                showError('切换编号功能暂时不可用，请重新生成图案');
-                return;
-            }
+            console.error('无法推断图片URL，切换功能暂时不可用。当前URL:', currentSrc);
+            showError('切换编号功能暂时不可用，请重新生成图案');
+            return;
         }
     }
     
@@ -1893,28 +1985,34 @@ function togglePatternLabels() {
     }
     
     // 切换显示状态
-    window.currentPatternShowLabels = !window.currentPatternShowLabels;
+    const newShowLabels = !window.currentPatternShowLabels;
+    window.currentPatternShowLabels = newShowLabels;
     
     // 更新图片源（添加时间戳防止缓存）
     const timestamp = new Date().getTime();
-    const separator = (window.currentPatternVizUrlWithLabels.includes('?') ? '&' : '?');
     
-    if (window.currentPatternShowLabels) {
+    if (newShowLabels) {
+        // 显示编号
         if (window.currentPatternVizUrlWithLabels) {
+            const separator = window.currentPatternVizUrlWithLabels.includes('?') ? '&' : '?';
             patternImage.src = window.currentPatternVizUrlWithLabels + separator + '_t=' + timestamp;
             if (toggleBtn) toggleBtn.textContent = '隐藏编号';
             console.log('切换到有编号版本:', patternImage.src);
+        } else {
+            console.error('有编号版本URL不存在');
+            showError('无法切换到有编号版本');
+            window.currentPatternShowLabels = false; // 恢复状态
         }
     } else {
-        // 确保无编号版本存在
+        // 隐藏编号
         if (window.currentPatternVizUrlNoLabels && window.currentPatternVizUrlNoLabels !== window.currentPatternVizUrlWithLabels) {
-            const noLabelsSeparator = (window.currentPatternVizUrlNoLabels.includes('?') ? '&' : '?');
-            patternImage.src = window.currentPatternVizUrlNoLabels + noLabelsSeparator + '_t=' + timestamp;
+            const separator = window.currentPatternVizUrlNoLabels.includes('?') ? '&' : '?';
+            patternImage.src = window.currentPatternVizUrlNoLabels + separator + '_t=' + timestamp;
             if (toggleBtn) toggleBtn.textContent = '显示编号';
             console.log('切换到无编号版本:', patternImage.src);
         } else {
             // 如果无编号版本不存在，显示警告
-            console.warn('无编号版本不存在，URL:', window.currentPatternVizUrlNoLabels);
+            console.error('无编号版本不存在，URL:', window.currentPatternVizUrlNoLabels, 'withLabels:', window.currentPatternVizUrlWithLabels);
             showError('无编号版本不存在，请重新生成图案');
             window.currentPatternShowLabels = true; // 恢复状态
             if (toggleBtn) toggleBtn.textContent = '隐藏编号';
@@ -2098,11 +2196,141 @@ function initColorPaletteManager() {
     }
 }
 
+// 加载品牌和系列列表
+async function loadBrandsAndSeries() {
+    try {
+        const response = await fetch('/api/colors/brands');
+        if (!response.ok) return;
+        
+        const data = await response.json();
+        const brandsMap = data.brands || {};
+        
+        const brandSelect = document.getElementById('colorBrand');
+        const seriesSelect = document.getElementById('colorSeries');
+        
+        if (!brandSelect || !seriesSelect) return;
+        
+        // 清空现有选项（保留"全部品牌"和"自定义"）
+        brandSelect.innerHTML = '<option value="">全部品牌</option><option value="自定义">自定义色板</option>';
+        
+        // 添加品牌选项
+        const brands = Object.keys(brandsMap).sort();
+        brands.forEach(brand => {
+            const option = document.createElement('option');
+            option.value = brand;
+            option.textContent = brand;
+            brandSelect.appendChild(option);
+        });
+        
+        // 更新可用颜色数
+        updateColorCount();
+        
+    } catch (error) {
+        console.error('加载品牌列表失败:', error);
+    }
+}
+
+// 更新系列列表
+async function updateColorSeries() {
+    const brandSelect = document.getElementById('colorBrand');
+    const seriesSelect = document.getElementById('colorSeries');
+    
+    if (!brandSelect || !seriesSelect) return;
+    
+    const selectedBrand = brandSelect.value;
+    
+    // 清空系列选项
+    seriesSelect.innerHTML = '<option value="">请先选择品牌</option>';
+    seriesSelect.disabled = true;
+    
+    if (!selectedBrand) {
+        updateColorCount();
+        return;
+    }
+    
+    // 如果选择"自定义"，不需要系列
+    if (selectedBrand === '自定义') {
+        seriesSelect.innerHTML = '<option value="">自定义色板（无系列）</option>';
+        seriesSelect.disabled = true;
+        updateColorCount();
+        return;
+    }
+    
+    // 获取该品牌的系列列表
+    try {
+        const response = await fetch('/api/colors/brands');
+        if (!response.ok) return;
+        
+        const data = await response.json();
+        const brandsMap = data.brands || {};
+        const series = brandsMap[selectedBrand] || [];
+        
+        if (series.length === 0) {
+            seriesSelect.innerHTML = '<option value="">该品牌暂无系列</option>';
+            seriesSelect.disabled = true;
+        } else {
+            seriesSelect.innerHTML = '<option value="">全部系列</option>';
+            series.forEach(s => {
+                const option = document.createElement('option');
+                option.value = s;
+                option.textContent = `${s}色`;
+                seriesSelect.appendChild(option);
+            });
+            seriesSelect.disabled = false;
+        }
+        
+        updateColorCount();
+    } catch (error) {
+        console.error('加载系列列表失败:', error);
+    }
+}
+
+// 更新可用颜色数
+async function updateColorCount() {
+    const brandSelect = document.getElementById('colorBrand');
+    const seriesSelect = document.getElementById('colorSeries');
+    const infoDiv = document.getElementById('colorPaletteInfo');
+    const countSpan = document.getElementById('selectedColorCount');
+    
+    if (!brandSelect || !infoDiv || !countSpan) return;
+    
+    const brand = brandSelect.value || null;
+    const series = (seriesSelect && seriesSelect.value) ? seriesSelect.value : null;
+    
+    try {
+        const params = new URLSearchParams();
+        if (brand) params.append('brand', brand);
+        if (series) params.append('series', series);
+        
+        const response = await fetch(`/api/colors?include_custom=true&${params.toString()}`);
+        if (!response.ok) return;
+        
+        const data = await response.json();
+        const count = data.colors ? data.colors.length : 0;
+        
+        countSpan.textContent = count;
+        infoDiv.style.display = 'block';
+    } catch (error) {
+        console.error('获取颜色数失败:', error);
+    }
+}
+
 // 页面加载时初始化
 document.addEventListener('DOMContentLoaded', function() {
     initializeUI();
     setupEventListeners();
     initColorPaletteManager();
+    loadBrandsAndSeries();
+    
+    // 绑定品牌选择器事件
+    const brandSelect = document.getElementById('colorBrand');
+    const seriesSelect = document.getElementById('colorSeries');
+    if (brandSelect) {
+        brandSelect.addEventListener('change', updateColorSeries);
+    }
+    if (seriesSelect) {
+        seriesSelect.addEventListener('change', updateColorCount);
+    }
     
     // 绑定终止按钮事件（按钮在进度条区域，需要延迟绑定）
     setTimeout(() => {

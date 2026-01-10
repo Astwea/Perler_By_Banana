@@ -69,7 +69,7 @@ class Printer:
     
     def generate_print_image(self, pattern: BeadPattern, paper_size: str = 'A4',
                            margin_mm: float = 10.0, show_grid: bool = True,
-                           show_labels: bool = False, dpi: int = 300) -> Image.Image:
+                           show_labels: bool = True, dpi: int = 300) -> Image.Image:
         """
         生成打印图像
         
@@ -130,23 +130,95 @@ class Printer:
                     
                     # 显示标签
                     if show_labels:
+                        # 优先使用完整的code（包含品牌信息），如果没有则构建
                         code = bead.get('code', '')
+                        if not code:
+                            # 如果没有code，尝试从品牌和色号构建
+                            brand = bead.get('brand', '')
+                            series = bead.get('series', '')
+                            color_name = bead.get('color_name', '')
+                            if brand and series and color_name:
+                                code = f"{brand}-{series}-{color_name}"
+                            elif color_name:
+                                code = color_name
+                        
                         if code:
+                            # 统一只显示色号编号（最后一部分），不显示品牌和系列信息
+                            # 例如：COCO-291-A01 -> A01, Mard-120-B05 -> B05
+                            parts = code.split('-')
+                            if len(parts) > 1:
+                                display_code = parts[-1]  # 只显示最后一部分（色号编号）
+                            else:
+                                # 如果没有分隔符，直接使用code（可能是自定义色号）
+                                display_code = code
+                            
                             try:
                                 # 尝试使用系统字体
                                 font_size = max(8, cell_size_px // 3)
-                                font = ImageFont.truetype("arial.ttf", font_size)
+                                try:
+                                    font = ImageFont.truetype("arial.ttf", font_size)
+                                except:
+                                    try:
+                                        font = ImageFont.truetype("/System/Library/Fonts/Arial.ttf", font_size)
+                                    except:
+                                        try:
+                                            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", font_size)
+                                        except:
+                                            font = ImageFont.load_default()
                             except:
                                 font = ImageFont.load_default()
                             
-                            bbox = draw.textbbox((0, 0), code, font=font)
+                            bbox = draw.textbbox((0, 0), display_code, font=font)
                             text_width = bbox[2] - bbox[0]
                             text_height = bbox[3] - bbox[1]
+                            
+                            # 确保文字不超出格子，如果太宽则缩小字体
+                            if text_width > cell_size_px * 0.9:
+                                scale = (cell_size_px * 0.9) / text_width
+                                adjusted_font_size = max(6, int(font_size * scale))
+                                try:
+                                    try:
+                                        font = ImageFont.truetype("arial.ttf", adjusted_font_size)
+                                    except:
+                                        try:
+                                            font = ImageFont.truetype("/System/Library/Fonts/Arial.ttf", adjusted_font_size)
+                                        except:
+                                            try:
+                                                font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", adjusted_font_size)
+                                            except:
+                                                font = ImageFont.load_default()
+                                except:
+                                    font = ImageFont.load_default()
+                                # 重新计算
+                                bbox = draw.textbbox((0, 0), display_code, font=font)
+                                text_width = bbox[2] - bbox[0]
+                                text_height = bbox[3] - bbox[1]
+                            
                             text_x = start_x + x * cell_size_px + (cell_size_px - text_width) // 2
                             text_y = start_y + y * cell_size_px + (cell_size_px - text_height) // 2
                             
-                            text_color = (255 - rgb[0], 255 - rgb[1], 255 - rgb[2])
-                            draw.text((text_x, text_y), code, fill=text_color, font=font)
+                            # 计算对比色（确保文字可读）
+                            brightness = (rgb[0] * 299 + rgb[1] * 587 + rgb[2] * 114) / 1000
+                            if brightness > 128:
+                                # 背景较亮，使用深色文字
+                                text_color = (0, 0, 0)
+                                stroke_color = (255, 255, 255)
+                            else:
+                                # 背景较暗，使用浅色文字
+                                text_color = (255, 255, 255)
+                                stroke_color = (0, 0, 0)
+                            
+                            # 添加描边以确保文字清晰可见
+                            stroke_width = max(1, cell_size_px // 30)
+                            # 先绘制描边（四周）
+                            for adj_x in range(-stroke_width, stroke_width + 1):
+                                for adj_y in range(-stroke_width, stroke_width + 1):
+                                    if adj_x != 0 or adj_y != 0:
+                                        draw.text((text_x + adj_x, text_y + adj_y), display_code, 
+                                                 fill=stroke_color, font=font)
+                            
+                            # 再绘制文字
+                            draw.text((text_x, text_y), display_code, fill=text_color, font=font)
         
         # 绘制网格线
         if show_grid:
@@ -182,7 +254,7 @@ class Printer:
     
     def generate_pdf(self, pattern: BeadPattern, output_path: str,
                     paper_size: str = 'A4', margin_mm: float = 10.0,
-                    show_grid: bool = True, show_labels: bool = False,
+                    show_grid: bool = True, show_labels: bool = True,
                     dpi: int = 300) -> None:
         """
         生成PDF打印文件
@@ -206,6 +278,9 @@ class Printer:
         print_image = self.generate_print_image(pattern, paper_size, margin_mm,
                                                show_grid, show_labels, dpi)
         
+        # 获取图像的实际像素尺寸
+        img_width_px, img_height_px = print_image.size
+        
         # 转换为ReportLab可用的格式
         img_buffer = io.BytesIO()
         print_image.save(img_buffer, format='PNG')
@@ -213,17 +288,43 @@ class Printer:
         img_reader = ImageReader(img_buffer)
         
         # 创建PDF
-        c = canvas.Canvas(output_path, pagesize=(page_width_mm * mm_unit, page_height_mm * mm_unit))
+        # 计算PDF页面尺寸（points）
+        # mm_unit 是 reportlab 的毫米转点单位：1mm = 2.834645669291339 points (即 72/25.4)
+        page_width_points = page_width_mm * mm_unit
+        page_height_points = page_height_mm * mm_unit
+        c = canvas.Canvas(output_path, pagesize=(page_width_points, page_height_points))
         
-        # 绘制图像
-        c.drawImage(img_reader, 0, 0, width=page_width_mm * mm_unit,
-                   height=page_height_mm * mm_unit, preserveAspectRatio=False)
+        # 将图像像素尺寸转换为PDF点（points）
+        # 转换公式：pixels -> points = pixels * (72 / dpi)
+        # 这是因为：1英寸 = 72 points = dpi pixels，所以 1 pixel = 72/dpi points
+        img_width_points = img_width_px * (72.0 / dpi)
+        img_height_points = img_height_px * (72.0 / dpi)
+        
+        # 计算缩放比例，确保图像完整显示在PDF页面内（不裁剪）
+        # 使用较小的缩放比例，确保图像既适应宽度也适应高度
+        scale_x = page_width_points / img_width_points
+        scale_y = page_height_points / img_height_points
+        scale = min(scale_x, scale_y)  # 使用较小的比例，确保完整显示
+        
+        # 计算缩放后的图像尺寸
+        scaled_width = img_width_points * scale
+        scaled_height = img_height_points * scale
+        
+        # 居中绘制图像
+        x_pos = (page_width_points - scaled_width) / 2
+        y_pos = (page_height_points - scaled_height) / 2
+        
+        # 绘制图像，保持宽高比，确保不裁剪
+        c.drawImage(img_reader, x_pos, y_pos, 
+                   width=scaled_width,
+                   height=scaled_height, 
+                   preserveAspectRatio=True)
         
         c.save()
     
     def generate_print_png(self, pattern: BeadPattern, output_path: str,
                           paper_size: str = 'A4', margin_mm: float = 10.0,
-                          show_grid: bool = True, show_labels: bool = False,
+                          show_grid: bool = True, show_labels: bool = True,
                           dpi: int = 300) -> None:
         """
         生成PNG打印文件

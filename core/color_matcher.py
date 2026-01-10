@@ -205,7 +205,8 @@ class ColorMatcher:
         return result
     
     def match_image_colors(self, image_array: np.ndarray, use_custom: bool = True,
-                          method: str = "cie94") -> np.ndarray:
+                          method: str = "cie94", brand: Optional[str] = None,
+                          series: Optional[str] = None) -> np.ndarray:
         """
         匹配图像中所有像素的颜色（优化版本，使用向量化操作）
         
@@ -213,6 +214,8 @@ class ColorMatcher:
             image_array: 图像数组 (height, width, 3)
             use_custom: 是否使用自定义色板
             method: 色差计算方法 ("cie76", "cie94", "cie2000")
+            brand: 品牌名称（如"COCO"），如果为"自定义"则只使用自定义色板
+            series: 系列名称（如"291"），需要与brand一起使用
             
         Returns:
             匹配结果数组，每个像素包含匹配的颜色信息
@@ -224,23 +227,19 @@ class ColorMatcher:
             image_array = image_array.astype(np.uint8)
         image_array = np.clip(image_array, 0, 255).astype(np.uint8)
         
-        # 选择使用的颜色列表
-        colors_to_use = self.all_colors if use_custom else self.standard_colors
+        # 根据品牌和系列过滤颜色
+        colors_to_use = self.get_all_colors(include_custom=use_custom, brand=brand, series=series)
         if not colors_to_use:
-            raise ValueError("没有可用的颜色")
+            raise ValueError(f"没有可用的颜色（品牌: {brand}, 系列: {series}）")
         
-        # 获取LAB颜色缓存
-        if use_custom:
-            color_lab_cache = self.color_lab_cache
-            color_indices = list(range(len(colors_to_use)))
-        else:
-            standard_rgb = np.array([[c['rgb'][0], c['rgb'][1], c['rgb'][2]] 
-                                    for c in self.standard_colors], dtype=np.float32)
-            color_lab_cache = rgb2lab(standard_rgb / 255.0)
-            color_indices = list(range(len(self.standard_colors)))
-        
-        if color_lab_cache is None:
-            raise ValueError("颜色缓存未初始化")
+        # 为过滤后的颜色计算LAB颜色空间（因为过滤后的颜色列表可能不同）
+        rgb_array = np.array([[c['rgb'][0], c['rgb'][1], c['rgb'][2]] 
+                             for c in colors_to_use], dtype=np.float32)
+        # 归一化到0-1范围
+        rgb_normalized = rgb_array / 255.0
+        # 转换为LAB颜色空间
+        color_lab_cache = rgb2lab(rgb_normalized)
+        color_indices = list(range(len(colors_to_use)))
         
         # 将图像转换为LAB颜色空间（批量处理）
         # 重塑为2D数组 (height*width, 3)
@@ -348,19 +347,61 @@ class ColorMatcher:
                 return color
         return None
     
-    def get_all_colors(self, include_custom: bool = True) -> List[Dict]:
+    def get_all_colors(self, include_custom: bool = True, 
+                      brand: Optional[str] = None, 
+                      series: Optional[str] = None) -> List[Dict]:
         """
-        获取所有颜色
+        获取所有颜色（支持按品牌和系列过滤）
         
         Args:
             include_custom: 是否包含自定义颜色
+            brand: 品牌名称（如"COCO"），如果为"自定义"则只返回自定义色板
+            series: 系列名称（如"291"），需要与brand一起使用
             
         Returns:
             颜色列表
         """
-        if include_custom:
-            return self.all_colors.copy()
-        return self.standard_colors.copy()
+        colors = self.all_colors.copy() if include_custom else self.standard_colors.copy()
+        
+        # 如果选择了"自定义"品牌，只返回自定义色板
+        if brand == "自定义":
+            return self.custom_colors.copy()
+        
+        # 如果指定了品牌，进行过滤
+        if brand:
+            colors = [c for c in colors if c.get('brand') == brand]
+        
+        # 如果指定了系列，进一步过滤
+        if series:
+            colors = [c for c in colors if c.get('series') == series]
+        
+        return colors
+    
+    def get_brands_and_series(self) -> Dict[str, List[str]]:
+        """
+        获取所有品牌及其系列列表
+        
+        Returns:
+            字典，键为品牌名，值为该品牌的系列列表
+        """
+        brands_map = {}
+        
+        # 从标准色板中提取
+        for color in self.standard_colors:
+            brand = color.get('brand', '')
+            series = color.get('series', '')
+            if brand:
+                if brand not in brands_map:
+                    brands_map[brand] = set()
+                if series:
+                    brands_map[brand].add(series)
+        
+        # 转换为列表并排序
+        result = {}
+        for brand, series_set in brands_map.items():
+            result[brand] = sorted(list(series_set), key=lambda x: int(x) if x.isdigit() else 999)
+        
+        return result
     
     def export_custom_colors_csv(self, file_path: str) -> None:
         """
