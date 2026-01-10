@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>拼豆图案生成系统</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>拼豆图案生成系统</h1>
+        
+        <!-- Nano Banana API 配置（顶层，可收起） -->
+        <div class="section collapsible" id="nanoBananaConfigSection">
+            <div class="section-header" onclick="toggleConfigSection()">
+                <h2>⚙️ Nano Banana API 配置</h2>
+                <span class="toggle-icon" id="configToggleIcon">▼</span>
+            </div>
+            <div class="collapsible-content" id="nanoBananaConfigContent">
+                <div class="controls">
+                    <div class="control-group" style="grid-column: 1 / -1;">
+                        <label>API密钥</label>
+                        <input type="password" id="nanoBananaApiKey" placeholder="输入Nano Banana API密钥" style="width: 100%;">
+                    </div>
+                    <div class="control-group" style="grid-column: 1 / -1;">
+                        <label>API基础URL</label>
+                        <input type="text" id="nanoBananaBaseUrl" placeholder="https://api.grsai.com" value="https://api.grsai.com" style="width: 100%;">
+                    </div>
+                    <div class="control-group" style="grid-column: 1 / -1;">
+                        <label>代理地址（可选，如果需要）</label>
+                        <input type="text" id="nanoBananaProxy" placeholder="http://127.0.0.1:7890 或留空使用系统代理" style="width: 100%;">
+                        <p style="font-size: 0.8em; color: #666; margin-top: 5px;">
+                            格式：http://host:port 或 https://host:port（例如：http://127.0.0.1:7890）
+                        </p>
+                    </div>
+                </div>
+                <div class="button-group">
+                    <button class="btn btn-secondary" id="saveNanoBananaConfig">保存配置</button>
+                </div>
+                <p style="margin-top: 10px; color: #666; font-size: 0.9em;">
+                    提示：首次使用需要配置API密钥和基础URL。配置保存后会在当前会话中生效。
+                </p>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>1. 上传图片</h2>
+            <div class="upload-area" id="uploadArea">
+                <p>点击或拖拽图片到此处上传</p>
+                <input type="file" id="fileInput" accept="image/*" style="display: none;">
+            </div>
+            <div class="button-group" id="autoExecuteGroup" style="margin-top: 15px; display: none;">
+                <button class="btn btn-primary" id="executeAllBtn" style="padding: 12px 30px; font-size: 16px;">
+                    ▶️ 一键执行全部步骤
+                </button>
+                <button class="btn btn-secondary" id="refreshAllBtn" style="padding: 12px 30px; font-size: 16px; display: none;">
+                    🔄 重新执行所有步骤
+                </button>
+            </div>
+            <div id="executionProgress" style="margin-top: 15px; display: none;">
+                <div style="background: #f0f0f0; border-radius: 5px; padding: 10px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                        <span id="currentStepText" style="font-weight: 600; color: #333;">准备执行...</span>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <span id="stepProgress" style="color: #666; font-size: 0.9em;">0/4</span>
+                            <button class="btn btn-danger" id="stopExecutionBtn" style="padding: 6px 15px; font-size: 14px; display: none;">
+                                ⏹️ 终止执行
+                            </button>
+                        </div>
+                    </div>
+                    <div style="background: #ddd; height: 20px; border-radius: 10px; overflow: hidden;">
+                        <div id="progressBar" style="background: linear-gradient(90deg, #667eea, #764ba2); height: 100%; width: 0%; transition: width 0.3s;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 步骤1: Nano Banana AI转换 -->
+        <div class="section step-section" id="stepNanoBanana">
+            <div class="step-header">
+                <h2>步骤1: Nano Banana AI转换</h2>
+                <div class="step-buttons">
+                    <button class="btn btn-secondary" id="refreshNanoBananaBtn" disabled>刷新</button>
+                </div>
+            </div>
+            <div class="controls">
+                <div class="control-group" style="grid-column: 1 / -1;">
+                    <label>提示词</label>
+                    <input type="text" id="nanoBananaPrompt" value="" style="width: 100%;">
+                    <p style="font-size: 0.8em; color: #666; margin-top: 5px;">
+                        生成像素风格图片：约束像素大小、只保留角色、移除背景和文字、在合适尺寸内还原角色细节（根据上方"尺寸类型"选择自动更新）
+                    </p>
+                </div>
+                <div class="control-group">
+                    <label>模型</label>
+                    <select id="nanoBananaModel" style="width: 100%;">
+                        <option value="nano-banana-fast">nano-banana-fast (快速)</option>
+                        <option value="nano-banana">nano-banana (标准)</option>
+                        <option value="nano-banana-pro">nano-banana-pro (专业)</option>
+                        <option value="nano-banana-pro-vt">nano-banana-pro-vt</option>
+                        <option value="nano-banana-pro-cl">nano-banana-pro-cl</option>
+                        <option value="nano-banana-pro-vip">nano-banana-pro-vip</option>
+                        <option value="nano-banana-pro-4k-vip">nano-banana-pro-4k-vip</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label>图像大小</label>
+                    <select id="nanoBananaImageSize" style="width: 100%;">
+                        <option value="1K">1K (默认)</option>
+                        <option value="2K">2K</option>
+                        <option value="4K">4K</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label>尺寸类型</label>
+                    <select id="nanoBananaSizeType" style="width: 100%;" onchange="updatePromptBySizeType()">
+                        <option value="small">小尺寸（适合小拼豆）</option>
+                        <option value="medium" selected>中等尺寸（标准拼豆）</option>
+                        <option value="large">大尺寸（大型拼豆）</option>
+                        <option value="xlarge">超大尺寸（巨型拼豆）</option>
+                        <option value="custom">自定义</option>
+                    </select>
+                    <p style="font-size: 0.8em; color: #666; margin-top: 5px;">
+                        选择尺寸类型会自动更新提示词中的尺寸描述
+                    </p>
+                </div>
+                <div class="control-group">
+                    <label>最大尺寸 
+                        <span class="range-value" id="nanoBananaMaxDimensionValue">200</span>
+                    </label>
+                    <input type="range" id="nanoBananaMaxDimension" min="100" max="400" value="200" step="50">
+                </div>
+            </div>
+            <div class="step-result" id="nanoBananaResult"></div>
+        </div>
+        
+        <!-- 步骤2: 图像预处理 -->
+        <div class="section step-section" id="stepPreprocess">
+            <div class="step-header">
+                <h2>步骤2: 图像预处理</h2>
+                <div class="step-buttons">
+                    <button class="btn btn-secondary" id="refreshPreprocessBtn" disabled>刷新</button>
+                </div>
+            </div>
+            <div class="controls">
+                <div class="control-group" style="grid-column: 1 / -1;">
+                    <label>
+                        <input type="checkbox" id="useNanoBananaResult" checked> 使用Nano Banana转换后的图片
+                    </label>
+                    <p style="font-size: 0.8em; color: #667eea; margin-top: 5px; font-weight: 600;">
+                        💡 如果Nano Banana结果很好，建议选择"轻度预处理"预设（降噪和锐度降低，颜色数量增加）
+                    </p>
+                </div>
+                <div class="control-group" style="grid-column: 1 / -1;">
+                    <label>预处理预设</label>
+                    <select id="preprocessPreset" style="width: 100%;" onchange="applyPreprocessPreset()">
+                        <option value="light">轻度预处理（Nano Banana结果好时推荐）</option>
+                        <option value="standard" selected>标准预处理（默认）</option>
+                        <option value="heavy">重度预处理（原始图片需要大量优化）</option>
+                        <option value="custom">自定义（手动调整参数）</option>
+                    </select>
+                    <p style="font-size: 0.8em; color: #666; margin-top: 5px;">
+                        选择预设会自动调整下方参数，适合Nano Banana结果好的情况
+                    </p>
+                </div>
+                <div class="control-group">
+                    <label>拼豆大小</label>
+                    <select id="beadSize" style="width: 100%;" onchange="updateBeadSizeMaxDimension()">
+                        <option value="2.6" selected>2.6mm（小拼豆）</option>
+                        <option value="5.0">5.0mm（标准拼豆）</option>
+                    </select>
+                    <p style="font-size: 0.8em; color: #666; margin-top: 5px;">
+                        选择拼豆直径，会影响最大尺寸范围
+                    </p>
+                </div>
+                <div class="control-group">
+                    <label>最大尺寸 (拼豆数量) 
+                        <span class="range-value" id="maxDimensionValue">200</span>
+                    </label>
+                    <input type="range" id="maxDimension" min="20" max="400" value="200" step="5">
+                    <p style="font-size: 0.8em; color: #666; margin-top: 5px;">
+                        限制图案的最大宽度或高度（按比例缩放），2.6mm拼豆建议200-400，5.0mm拼豆建议100-200
+                    </p>
+                </div>
+                <div class="control-group">
+                    <label>目标颜色数量 
+                        <span class="range-value" id="targetColorsValue">20</span>
+                    </label>
+                    <input type="range" id="targetColors" min="5" max="50" value="20" step="1">
+                    <p style="font-size: 0.8em; color: #666; margin-top: 5px;">
+                        K-means聚类减少颜色数（Nano Banana结果好时可设置更大，如30-40）
+                    </p>
+                </div>
+                <div class="control-group">
+                    <label>降噪强度 
+                        <span class="range-value" id="denoiseValue">0.5</span>
+                    </label>
+                    <input type="range" id="denoiseStrength" min="0" max="1" value="0.5" step="0.1">
+                    <p style="font-size: 0.8em; color: #666; margin-top: 5px;">
+                        0=不降噪，1=最强降噪（Nano Banana结果好时可设为0.1-0.3）
+                    </p>
+                </div>
+                <div class="control-group">
+                    <label>对比度 
+                        <span class="range-value" id="contrastValue">1.2</span>
+                    </label>
+                    <input type="range" id="contrastFactor" min="0.5" max="2" value="1.2" step="0.1">
+                    <p style="font-size: 0.8em; color: #666; margin-top: 5px;">
+                        1.0=不变，>1.0增强，<1.0降低（Nano Banana结果好时可设为1.0-1.1）
+                    </p>
+                </div>
+                <div class="control-group">
+                    <label>锐度 
+                        <span class="range-value" id="sharpnessValue">1.1</span>
+                    </label>
+                    <input type="range" id="sharpnessFactor" min="0.5" max="2" value="1.1" step="0.1">
+                    <p style="font-size: 0.8em; color: #666; margin-top: 5px;">
+                        1.0=不变，>1.0增强，<1.0降低（Nano Banana结果好时可设为1.0）
+                    </p>
+                </div>
+                <div class="control-group">
+                    <label>
+                        <input type="checkbox" id="useCustomColors" checked> 使用自定义色板
+                    </label>
+                </div>
+            </div>
+            <div class="step-result" id="preprocessResult"></div>
+        </div>
+        
+        <!-- 步骤3: 生成拼豆图案 -->
+        <div class="section step-section" id="stepGeneratePattern">
+            <div class="step-header">
+                <h2>步骤3: 生成拼豆图案</h2>
+                <div class="step-buttons">
+                    <button class="btn btn-secondary" id="refreshGeneratePatternBtn" disabled>刷新</button>
+                </div>
+            </div>
+            <div class="controls">
+                <div class="control-group">
+                    <label>
+                        <input type="checkbox" id="useCustomColorsPattern" checked> 使用自定义色板
+                    </label>
+                </div>
+            </div>
+            <div class="step-result" id="generatePatternResult"></div>
+        </div>
+        
+        <!-- 步骤4: 生成实物效果图 -->
+        <div class="section step-section" id="stepGenerateRender">
+            <div class="step-header">
+                <h2>步骤4: 生成实物效果图</h2>
+                <div class="step-buttons">
+                    <button class="btn btn-secondary" id="refreshGenerateRenderBtn" disabled>刷新</button>
+                </div>
+            </div>
+            <div class="controls">
+                <div class="control-group" style="grid-column: 1 / -1;">
+                    <label>预设风格</label>
+                    <select id="renderStylePreset" style="width: 100%;" onchange="updateRenderPrompt()">
+                        <option value="custom">自定义</option>
+                        <option value="keychain">钥匙扣风格</option>
+                        <option value="ornament">摆件装饰品</option>
+                        <option value="keychain_hanging">钥匙扣悬挂展示</option>
+                        <option value="desk_ornament">桌面摆件</option>
+                        <option value="wall_art">墙面装饰</option>
+                        <option value="product_photo">产品摄影</option>
+                        <option value="lifestyle">生活场景</option>
+                    </select>
+                </div>
+                <div class="control-group" style="grid-column: 1 / -1;">
+                    <label>提示词</label>
+                    <input type="text" id="renderPrompt" value="拼豆钥匙扣实物效果图，真实的拼豆工艺品，钥匙扣配件，近距离拍摄，高清晰度，专业产品摄影，自然光线，背景虚化，细节清晰" style="width: 100%;">
+                    <p style="font-size: 0.8em; color: #666; margin-top: 5px;">
+                        提示词用于描述希望生成的效果图风格和特点，可选择预设风格或自定义
+                    </p>
+                </div>
+                <div class="control-group">
+                    <label>模型</label>
+                    <select id="renderModel" style="width: 100%;">
+                        <option value="nano-banana-fast">nano-banana-fast (快速)</option>
+                        <option value="nano-banana">nano-banana (标准)</option>
+                        <option value="nano-banana-pro">nano-banana-pro (专业)</option>
+                        <option value="nano-banana-pro-vt">nano-banana-pro-vt</option>
+                        <option value="nano-banana-pro-cl">nano-banana-pro-cl</option>
+                        <option value="nano-banana-pro-vip">nano-banana-pro-vip</option>
+                        <option value="nano-banana-pro-4k-vip">nano-banana-pro-4k-vip</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label>图像大小</label>
+                    <select id="renderImageSize" style="width: 100%;">
+                        <option value="1K">1K (默认)</option>
+                        <option value="2K">2K</option>
+                        <option value="4K">4K</option>
+                    </select>
+                </div>
+            </div>
+            <div class="step-result" id="generateRenderResult"></div>
+        </div>
+        
+        
+        <!-- 自定义色板管理 -->
+        <div class="section collapsible" id="colorPaletteSection">
+            <div class="section-header" onclick="toggleColorPaletteSection()">
+                <h2>🎨 自定义色板管理</h2>
+                <span class="toggle-icon" id="colorPaletteToggleIcon">▼</span>
+            </div>
+            <div class="collapsible-content" id="colorPaletteContent">
+                <div class="palette-info">
+                    <h3>色板配置信息</h3>
+                    <p><strong>标准色板:</strong> <span id="standardColorCount">加载中...</span> 种颜色</p>
+                    <p><strong>自定义色板:</strong> <span id="customColorCount">加载中...</span> 种颜色</p>
+                    <p><strong>总颜色数:</strong> <span id="totalColorCount">加载中...</span> 种颜色</p>
+                    <p><strong>拼豆尺寸:</strong> 2.6mm (小拼豆) / 5.0mm (标准拼豆)</p>
+                </div>
+                <div class="color-palette-grid" id="colorPaletteGrid">
+                    <p style="grid-column: 1 / -1; text-align: center; color: #666;">加载中...</p>
+                </div>
+                <div class="add-color-form">
+                    <h3>添加自定义颜色</h3>
+                    <div class="controls">
+                        <div class="control-group">
+                            <label>中文名称</label>
+                            <input type="text" id="newColorNameZh" placeholder="例如：红色" style="width: 100%;">
+                        </div>
+                        <div class="control-group">
+                            <label>英文名称</label>
+                            <input type="text" id="newColorNameEn" placeholder="例如：Red" style="width: 100%;">
+                        </div>
+                        <div class="control-group">
+                            <label>色号代码</label>
+                            <input type="text" id="newColorCode" placeholder="例如：R001" style="width: 100%;">
+                        </div>
+                        <div class="control-group">
+                            <label>RGB值</label>
+                            <input type="text" id="newColorRgb" placeholder="例如：255,0,0" style="width: 100%;">
+                        </div>
+                        <div class="control-group">
+                            <label>分类</label>
+                            <input type="text" id="newColorCategory" value="自定义" style="width: 100%;">
+                        </div>
+                        <div class="control-group">
+                            <label>颜色预览</label>
+                            <div style="width: 100%; height: 50px; border: 2px solid #ddd; border-radius: 5px; background: #fff;" id="newColorPreview"></div>
+                        </div>
+                    </div>
+                    <div class="button-group">
+                        <button class="btn btn-primary" id="addColorBtn">添加颜色</button>
+                    </div>
+                </div>
+                <div class="import-export-section" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd;">
+                    <h3>导入/导出自定义色板</h3>
+                    <div class="button-group" style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button class="btn btn-success" id="exportColorsCsvBtn">📥 导出CSV</button>
+                        <button class="btn btn-success" id="exportColorsJsonBtn">📥 导出JSON</button>
+                        <label for="importColorFile" class="btn btn-secondary" style="cursor: pointer; margin: 0;">
+                            📤 导入文件
+                            <input type="file" id="importColorFile" accept=".csv,.json" style="display: none;">
+                        </label>
+                        <label class="control-group" style="display: flex; align-items: center; gap: 5px; margin: 0;">
+                            <input type="checkbox" id="replaceColorsOnImport" style="width: auto;">
+                            <span style="font-size: 0.9em;">导入时替换现有颜色</span>
+                        </label>
+                    </div>
+                    <p style="font-size: 0.85em; color: #666; margin-top: 10px;">
+                        <strong>CSV格式:</strong> ID,中文名称,英文名称,色号代码,R,G,B,分类<br>
+                        <strong>JSON格式:</strong> 与系统内部格式相同，包含 colors 数组
+                    </p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="section hidden" id="resultSection">
+            <h2>3. 查看结果</h2>
+            <div class="stats" id="stats"></div>
+            <div class="preview-area" id="previewArea"></div>
+            <div class="export-options">
+                <button class="btn btn-success" id="exportJsonBtn">导出JSON</button>
+                <button class="btn btn-success" id="exportCsvBtn">导出CSV</button>
+                <button class="btn btn-success" id="exportPngBtn">导出PNG</button>
+                <button class="btn btn-secondary" id="printPreviewBtn">打印预览</button>
+                <button class="btn btn-secondary" id="printBtn">生成PDF</button>
+            </div>
+            <div class="print-preview hidden" id="printPreviewArea"></div>
+        </div>
+    </div>
+    
+    <script src="/static/js/main.js"></script>
+</body>
+</html>
+

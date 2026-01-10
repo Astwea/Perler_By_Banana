@@ -1,0 +1,44 @@
+拼豆图案生成系统 - 启动说明
+===============================
+
+【推荐方式】使用PowerShell脚本启动：
+-------------------------------------
+1. 右键点击 "启动应用.ps1" 或 "run.ps1" 文件
+2. 选择"使用PowerShell运行"
+   或者
+   在PowerShell中运行: .\启动应用.ps1
+
+如果提示"无法运行脚本"，请执行：
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+
+
+【备选方式】使用CMD批处理文件：
+---------------------------------
+1. 双击 "run.bat" 文件
+2. 如果提示"未找到conda"，请使用PowerShell脚本
+
+
+【手动启动方式】：
+-----------------
+1. 打开Anaconda Prompt（如果有）
+2. 激活环境:
+   conda activate AAA
+3. 切换到项目目录:
+   cd F:\python_project\pin_dou
+4. 启动应用:
+   python app.py
+
+
+【访问系统】：
+-------------
+启动成功后，在浏览器中访问：
+http://localhost:8000
+
+
+【注意事项】：
+-------------
+- 确保已安装Anaconda/Miniconda
+- 确保已创建conda环境AAA（Python 3.7）
+- 确保所有依赖已安装（pip install -r requirements.txt）
+- 如果CMD没有conda，强烈推荐使用PowerShell脚本
+
