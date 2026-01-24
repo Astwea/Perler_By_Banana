@@ -48,13 +48,14 @@ class PatternOptimizer:
             return image_array
         
         # 使用K-means聚类（确保聚类数不超过像素数）
-        n_clusters = min(target_colors, len(pixels), 255)
+        n_clusters = min(target_colors, len(pixels))
         if n_clusters < 1:
             n_clusters = 1
         
         # 性能优化：对大量像素进行采样，只对采样后的像素进行聚类
         # 对于大图像（>50万像素），采样到最多10万像素
-        max_sample_size = 100000
+        # 确保采样数不少于聚类数，避免KMeans n_samples < n_clusters
+        max_sample_size = max(100000, n_clusters)
         if len(pixels) > max_sample_size:
             # 随机采样
             sample_indices = np.random.choice(len(pixels), max_sample_size, replace=False)
@@ -316,4 +317,3 @@ class PatternOptimizer:
             optimized = np.array(img)
         
         return optimized, (new_width, new_height)
-

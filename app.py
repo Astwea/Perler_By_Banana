@@ -8,6 +8,9 @@ import traceback
 import logging
 import base64
 import asyncio
+import webbrowser
+import threading
+import time
 from pathlib import Path
 from typing import Optional, Dict, List
 from concurrent.futures import ThreadPoolExecutor
@@ -18,8 +21,21 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 import uvicorn
 
-# 配置日志
-logging.basicConfig(level=logging.INFO)
+# 配置日志 - 同时输出到文件和控制台
+log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+os.makedirs(log_dir, exist_ok=True)
+
+log_file = os.path.join(log_dir, "app.log")
+
+# 配置根日志记录器
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(log_file, encoding='utf-8'),
+        logging.StreamHandler()
+    ]
+)
 logger = logging.getLogger(__name__)
 
 from core.image_processor import ImageProcessor
@@ -120,7 +136,7 @@ def _preprocess_image(image_path: str, target_colors: int, max_dimension: int,
 
 def _generate_pattern(preprocess_path: str, new_width: int, new_height: int,
                      bead_size_mm: float, use_custom: bool, brand: Optional[str],
-                     series: Optional[str]):
+                     series: Optional[str], match_mode: str = "nearest"):
     """在线程池中执行的图案生成函数"""
     # 重新加载预处理后的图像
     image_processor.load_image(preprocess_path)
@@ -132,7 +148,8 @@ def _generate_pattern(preprocess_path: str, new_width: int, new_height: int,
         use_custom=use_custom,
         method="cie94",
         brand=brand if brand else None,
-        series=series if series else None
+        series=series if series else None,
+        match_mode=match_mode
     )
     
     # 生成拼豆图案
@@ -497,7 +514,8 @@ async def step_generate_pattern(
     use_custom: bool = Form(True),
     bead_size_mm: float = Form(2.6),
     brand: Optional[str] = Form(None),
-    series: Optional[str] = Form(None)
+    series: Optional[str] = Form(None),
+    match_mode: str = Form("nearest")
 ):
     """
     步骤3: 生成拼豆图案
@@ -534,7 +552,8 @@ async def step_generate_pattern(
             bead_size_mm,
             use_custom,
             brand if brand else None,
-            series if series else None
+            series if series else None,
+            match_mode
         )
         
         # 保存图案（这个操作很快，不需要在线程池中执行）
@@ -645,7 +664,8 @@ async def process_image(
     use_nano_banana: bool = Form(False),
     nano_banana_prompt: str = Form("像素艺术风格，一格一格的色块，清晰的像素点阵，无网格线，纯色块拼接，像素化处理，马赛克风格，8位像素艺术，移除所有背景，移除所有文字和字幕，只保留角色主体，角色抠图，纯白色背景，小尺寸像素图，控制在有限像素内尽可能还原角色细节，适合拼豆制作的小尺寸像素艺术"),
     nano_banana_model: str = Form("nano-banana-fast"),
-    nano_banana_image_size: str = Form("1K")
+    nano_banana_image_size: str = Form("1K"),
+    match_mode: str = Form("nearest")
 ):
     """
     处理图像生成拼豆图案（旧API，保持向后兼容）
@@ -742,7 +762,8 @@ async def process_image(
             2.6,  # 默认拼豆大小
             use_custom,
             None,  # 不使用品牌过滤（旧API）
-            None   # 不使用系列过滤（旧API）
+            None,   # 不使用系列过滤（旧API）
+            match_mode
         )
         
         # 保存图案（这个操作很快，不需要在线程池中执行）
@@ -1193,5 +1214,36 @@ async def step_generate_render(
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    # 记录启动信息
+    logger.info("=" * 50)
+    logger.info("拼豆图案生成系统正在启动...")
+    logger.info("=" * 50)
 
+    # 定义打开浏览器的函数
+    def open_browser():
+        """延迟打开浏览器，确保服务器已启动"""
+        time.sleep(2)  # 等待2秒让服务器启动
+        url = "http://localhost:8000"
+        logger.info(f"正在打开浏览器: {url}")
+        try:
+            webbrowser.open(url)
+        except Exception as e:
+            logger.error(f"打开浏览器失败: {e}")
+
+    # 在新线程中打开浏览器
+    browser_thread = threading.Thread(target=open_browser, daemon=True)
+    browser_thread.start()
+
+    try:
+        # 启动服务器
+        logger.info("服务器正在启动，请稍候...")
+        uvicorn.run(app, host="0.0.0.0", port=8000)
+    except Exception as e:
+        logger.error(f"服务器启动失败: {e}")
+        logger.error(traceback.format_exc())
+        import sys
+        # 显示错误对话框（仅Windows）
+        if sys.platform == 'win32':
+            import ctypes
+            ctypes.windll.user32.MessageBoxW(0, f"服务器启动失败:\n{str(e)}", "错误", 0)
+        sys.exit(1)

@@ -217,10 +217,15 @@
                     <label>目标颜色数量 
                         <span class="range-value" id="targetColorsValue">20</span>
                     </label>
-                    <input type="range" id="targetColors" min="5" max="50" value="20" step="1">
+                    <input type="range" id="targetColors" min="0" max="100" value="20" step="1">
                     <p style="font-size: 0.8em; color: #666; margin-top: 5px;">
-                        K-means聚类减少颜色数（Nano Banana结果好时可设置更大，如30-40）
+                        K-means聚类减少颜色数（值越大细节越多但更慢，Nano Banana结果好时可设更大，如40-80；勾选下方可跳过）
                     </p>
+                </div>
+                <div class="control-group">
+                    <label>
+                        <input type="checkbox" id="disableKMeans"> 不进行K-means（保留原图颜色细节）
+                    </label>
                 </div>
                 <div class="control-group">
                     <label>降噪强度 
@@ -271,6 +276,18 @@
                     <label>
                         <input type="checkbox" id="useCustomColorsPattern" checked> 使用自定义色板
                     </label>
+                </div>
+                <div class="control-group">
+                    <label>颜色匹配模式</label>
+                    <select id="colorMatchMode">
+                        <option value="nearest">标准（最近色）</option>
+                        <option value="detail">细节优先（亮度权重）</option>
+                        <option value="dither_fs">抖动（Floyd-Steinberg）</option>
+                        <option value="dither_atkinson">抖动（Atkinson）</option>
+                    </select>
+                    <p style="font-size: 0.8em; color: #666; margin-top: 5px;">
+                        抖动模式会慢一些，但能保留更多发丝与阴影细节
+                    </p>
                 </div>
             </div>
             <div class="step-result" id="generatePatternResult"></div>
@@ -423,4 +440,3 @@
     <script src="/static/js/main.js"></script>
 </body>
 </html>
-

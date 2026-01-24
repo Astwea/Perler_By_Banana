@@ -206,7 +206,8 @@ class ColorMatcher:
     
     def match_image_colors(self, image_array: np.ndarray, use_custom: bool = True,
                           method: str = "cie94", brand: Optional[str] = None,
-                          series: Optional[str] = None) -> np.ndarray:
+                          series: Optional[str] = None,
+                          match_mode: str = "nearest") -> np.ndarray:
         """
         匹配图像中所有像素的颜色（优化版本，使用向量化操作）
         
@@ -216,6 +217,7 @@ class ColorMatcher:
             method: 色差计算方法 ("cie76", "cie94", "cie2000")
             brand: 品牌名称（如"COCO"），如果为"自定义"则只使用自定义色板
             series: 系列名称（如"291"），需要与brand一起使用
+            match_mode: 匹配模式 ("nearest", "detail", "dither_fs", "dither_atkinson")
             
         Returns:
             匹配结果数组，每个像素包含匹配的颜色信息
@@ -240,6 +242,10 @@ class ColorMatcher:
         # 转换为LAB颜色空间
         color_lab_cache = rgb2lab(rgb_normalized)
         color_indices = list(range(len(colors_to_use)))
+        
+        match_mode = (match_mode or "nearest").lower()
+        if match_mode in ("dither_fs", "dither_atkinson"):
+            return self._match_image_colors_dither(image_array, colors_to_use, color_lab_cache, match_mode)
         
         # 将图像转换为LAB颜色空间（批量处理）
         # 重塑为2D数组 (height*width, 3)
@@ -269,7 +275,12 @@ class ColorMatcher:
             color_lab_exp = color_lab[np.newaxis, :, :]  # (1, n_colors, 3)
             
             # 计算LAB差值并计算距离
-            if method == "cie94" and HAS_CIE94:
+            if match_mode == "detail":
+                # 亮度权重更高，优先保留明暗层次
+                lab_diff = batch_lab_exp - color_lab_exp  # (batch_size, n_colors, 3)
+                weights = np.array([1.5, 1.0, 1.0])
+                distances = np.sqrt(np.sum((lab_diff ** 2) * weights, axis=2))
+            elif method == "cie94" and HAS_CIE94:
                 try:
                     # 对于CIE94，使用scikit-image的实现
                     # 需要配对计算每个像素到所有颜色
@@ -316,6 +327,59 @@ class ColorMatcher:
         matched_colors_array = matched_colors_array.reshape(height, width)
         
         return matched_colors_array
+
+    def _match_image_colors_dither(self, image_array: np.ndarray, colors_to_use: List[Dict],
+                                   color_lab_cache: np.ndarray, mode: str) -> np.ndarray:
+        """使用误差扩散抖动进行颜色匹配，保留细节层次。"""
+        height, width = image_array.shape[:2]
+        
+        # 转为LAB进行误差扩散
+        pixels_2d = image_array.reshape(-1, 3).astype(np.float32) / 255.0
+        lab_image = rgb2lab(pixels_2d).reshape(height, width, 3)
+        
+        if mode == "dither_atkinson":
+            kernel = [
+                (1, 0, 1 / 8),
+                (2, 0, 1 / 8),
+                (-1, 1, 1 / 8),
+                (0, 1, 1 / 8),
+                (1, 1, 1 / 8),
+                (0, 2, 1 / 8),
+            ]
+        else:
+            # Floyd-Steinberg
+            kernel = [
+                (1, 0, 7 / 16),
+                (-1, 1, 3 / 16),
+                (0, 1, 5 / 16),
+                (1, 1, 1 / 16),
+            ]
+        
+        min_lab = np.array([0.0, -128.0, -128.0], dtype=np.float32)
+        max_lab = np.array([100.0, 127.0, 127.0], dtype=np.float32)
+        matched_colors = np.empty((height, width), dtype=object)
+        
+        for y in range(height):
+            for x in range(width):
+                pixel_lab = lab_image[y, x]
+                diff = color_lab_cache - pixel_lab
+                dist = np.sum(diff * diff, axis=1)
+                best_idx = int(np.argmin(dist))
+                
+                best_color = colors_to_use[best_idx].copy()
+                best_color['distance'] = float(np.sqrt(dist[best_idx]))
+                matched_colors[y, x] = best_color
+                
+                err = pixel_lab - color_lab_cache[best_idx]
+                if err[0] != 0 or err[1] != 0 or err[2] != 0:
+                    for dx, dy, weight in kernel:
+                        nx = x + dx
+                        ny = y + dy
+                        if 0 <= nx < width and 0 <= ny < height:
+                            lab_image[ny, nx] += err * weight
+                            lab_image[ny, nx] = np.clip(lab_image[ny, nx], min_lab, max_lab)
+        
+        return matched_colors
     
     def get_color_by_id(self, color_id: int) -> Optional[Dict]:
         """
@@ -656,4 +720,3 @@ class ColorMatcher:
             'imported': imported_count,
             'errors': errors
         }
-

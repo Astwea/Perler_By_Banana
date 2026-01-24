@@ -74,7 +74,13 @@ function initializeUI() {
                             <label>目标颜色数量 
                                 <span class="range-value" id="targetColorsValue">20</span>
                             </label>
-                            <input type="range" id="targetColors" min="5" max="50" value="20" step="1">
+                            <input type="range" id="targetColors" min="0" max="100" value="20" step="1">
+                        </div>
+                        
+                        <div class="control-group">
+                            <label>
+                                <input type="checkbox" id="disableKMeans"> 不进行K-means（保留原图颜色细节）
+                            </label>
                         </div>
                         
                         <div class="control-group">
@@ -102,6 +108,16 @@ function initializeUI() {
                             <label>
                                 <input type="checkbox" id="useCustomColors" checked> 使用自定义色板
                             </label>
+                        </div>
+                        
+                        <div class="control-group">
+                            <label>颜色匹配模式</label>
+                            <select id="colorMatchMode">
+                                <option value="nearest">标准（最近色）</option>
+                                <option value="detail">细节优先（亮度权重）</option>
+                                <option value="dither_fs">抖动（Floyd-Steinberg）</option>
+                                <option value="dither_atkinson">抖动（Atkinson）</option>
+                            </select>
                         </div>
                         
                         <div class="control-group" style="grid-column: 1 / -1;">
@@ -181,6 +197,7 @@ function setupEventListeners() {
     
     // 范围滑块事件
     setupRangeInputs();
+    setupKMeansToggle();
     
     // Nano Banana设置
     setupNanoBananaToggle();
@@ -389,6 +406,7 @@ function applyPreprocessPreset() {
         document.getElementById('denoiseValue').textContent = params.denoiseStrength.toFixed(1);
         document.getElementById('contrastValue').textContent = params.contrastFactor.toFixed(1);
         document.getElementById('sharpnessValue').textContent = params.sharpnessFactor.toFixed(1);
+        updateKMeansToggle();
     }
 }
 
@@ -534,6 +552,52 @@ function setupRangeInputs() {
     });
 }
 
+function updateKMeansToggle() {
+    const disableKMeans = document.getElementById('disableKMeans');
+    const targetColors = document.getElementById('targetColors');
+    const targetColorsValue = document.getElementById('targetColorsValue');
+    
+    if (!disableKMeans || !targetColors || !targetColorsValue) return;
+    
+    if (disableKMeans.checked) {
+        if (targetColors.value !== '0') {
+            targetColors.dataset.prevValue = targetColors.value;
+        }
+        targetColors.value = '0';
+        targetColors.disabled = true;
+        targetColorsValue.textContent = '0';
+    } else {
+        const restored = targetColors.dataset.prevValue || targetColors.value || '20';
+        targetColors.value = restored;
+        targetColors.disabled = false;
+        targetColorsValue.textContent = restored;
+    }
+}
+
+function setupKMeansToggle() {
+    const disableKMeans = document.getElementById('disableKMeans');
+    if (!disableKMeans) return;
+    
+    disableKMeans.addEventListener('change', updateKMeansToggle);
+    updateKMeansToggle();
+}
+
+function getTargetColorsValue() {
+    const targetColors = document.getElementById('targetColors');
+    const disableKMeans = document.getElementById('disableKMeans');
+    
+    if (!targetColors) return '0';
+    if (disableKMeans && disableKMeans.checked) return '0';
+    
+    return targetColors.value;
+}
+
+function getMatchModeValue() {
+    const matchMode = document.getElementById('colorMatchMode');
+    if (!matchMode) return 'nearest';
+    return matchMode.value || 'nearest';
+}
+
 // 设置导出按钮
 function setupExportButtons() {
     const exportJsonBtn = document.getElementById('exportJsonBtn');
@@ -666,8 +730,9 @@ async function handleProcess() {
     const formData = new FormData();
     formData.append('file_id', currentFileId);
     formData.append('max_dimension', document.getElementById('maxDimension').value);
-    formData.append('target_colors', document.getElementById('targetColors').value);
+    formData.append('target_colors', getTargetColorsValue());
     formData.append('use_custom', document.getElementById('useCustomColors').checked);
+    formData.append('match_mode', getMatchModeValue());
     formData.append('denoise_strength', document.getElementById('denoiseStrength').value);
     formData.append('contrast_factor', document.getElementById('contrastFactor').value);
     formData.append('sharpness_factor', document.getElementById('sharpnessFactor').value);
@@ -1099,7 +1164,7 @@ async function runPreprocess() {
         const formData = new FormData();
         formData.append('file_id', currentFileId);
         formData.append('max_dimension', document.getElementById('maxDimension').value);
-        formData.append('target_colors', document.getElementById('targetColors').value);
+        formData.append('target_colors', getTargetColorsValue());
         formData.append('denoise_strength', document.getElementById('denoiseStrength').value);
         formData.append('contrast_factor', document.getElementById('contrastFactor').value);
         formData.append('sharpness_factor', document.getElementById('sharpnessFactor').value);
@@ -1206,6 +1271,7 @@ async function runGeneratePattern() {
         const formData = new FormData();
         formData.append('file_id', currentFileId);
         formData.append('use_custom', document.getElementById('useCustomColorsPattern').checked);
+        formData.append('match_mode', getMatchModeValue());
         // 从步骤2的选择器获取拼豆大小（步骤2已经设置了拼豆大小）
         const beadSizeSelect = document.getElementById('beadSize');
         const beadSize = beadSizeSelect ? parseFloat(beadSizeSelect.value) : 2.6;
@@ -1295,6 +1361,35 @@ async function runGeneratePattern() {
                     </p>
                     <small style="color: #666;">点击图片可放大查看，使用+/-按钮可缩放，点击"切换编号"按钮可显示/隐藏色号</small>
                 </div>
+
+                <!-- 色号使用清单 -->
+                <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; border: 1px solid #dee2e6;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                        <h3 style="margin: 0; font-size: 1.2em; color: #495057;">📋 色号使用清单</h3>
+                        <button class="btn btn-secondary" id="toggleColorListBtn" style="padding: 6px 12px; font-size: 14px;">
+                            收起
+                        </button>
+                    </div>
+                    <div id="colorListContainer" style="max-height: 400px; overflow-y: auto;">
+                        <!-- 颜色清单表格 -->
+                        <table style="width: 100%; border-collapse: collapse; font-size: 14px; background: white; border-radius: 5px; overflow: hidden;">
+                            <thead>
+                                <tr style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; position: sticky; top: 0; z-index: 10;">
+                                    <th style="padding: 12px 10px; text-align: left;">颜色</th>
+                                    <th style="padding: 12px 10px; text-align: left;">色号</th>
+                                    <th style="padding: 12px 10px; text-align: right;">数量</th>
+                                    <th style="padding: 12px 10px; text-align: right;">占比</th>
+                                </tr>
+                            </thead>
+                            <tbody id="colorListBody">
+                                <!-- 动态生成 -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <div id="colorListSummary" style="margin-top: 10px; padding: 10px; background: white; border-radius: 5px; font-size: 14px; color: #6c757d;">
+                        <!-- 统计摘要 -->
+                    </div>
+                </div>
             </div>
         `;
         
@@ -1339,6 +1434,17 @@ async function runGeneratePattern() {
                 console.log('切换编号按钮事件已绑定:', toggleLabelsBtn);
             }
         }, 100);
+
+        // 生成色号清单
+        if (stats && stats.color_counts && stats.color_details) {
+            generateColorList(stats.color_counts, stats.color_details, stats.total_beads);
+
+            // 绑定收起/展开按钮事件
+            const toggleColorListBtn = document.getElementById('toggleColorListBtn');
+            if (toggleColorListBtn) {
+                toggleColorListBtn.onclick = toggleColorList;
+            }
+        }
         
         // 启用生成实物效果图的刷新按钮
         const refreshGenerateRenderBtn = document.getElementById('refreshGenerateRenderBtn');
@@ -1371,6 +1477,111 @@ async function runGeneratePattern() {
         resultDiv.innerHTML = `<div class="error">错误: ${error.message}</div>`;
         refreshBtn.disabled = false;
         showError('图案生成失败: ' + error.message);
+    }
+}
+
+/**
+ * 生成色号使用清单
+ * @param {Object} colorCounts - 颜色数量映射 {color_id: count}
+ * @param {Object} colorDetails - 颜色详细信息映射 {color_id: {code, name_zh, name_en, rgb, ...}}
+ * @param {number} totalBeads - 总拼豆数
+ */
+function generateColorList(colorCounts, colorDetails, totalBeads) {
+    const tbody = document.getElementById('colorListBody');
+    const summaryDiv = document.getElementById('colorListSummary');
+
+    if (!tbody || !summaryDiv) {
+        console.warn('颜色清单容器未找到');
+        return;
+    }
+
+    if (!colorCounts || Object.keys(colorCounts).length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" style="padding: 20px; text-align: center; color: #6c757d;">暂无颜色数据</td></tr>';
+        summaryDiv.innerHTML = '';
+        return;
+    }
+
+    // 按使用数量降序排列
+    const sortedColors = Object.entries(colorCounts)
+        .sort((a, b) => b[1] - a[1])
+        .map(([colorId, count]) => {
+            const colorInfo = colorDetails[colorId] || {
+                code: colorId,
+                name_zh: '未知颜色',
+                name_en: 'Unknown',
+                rgb: [128, 128, 128]
+            };
+            return {
+                colorId,
+                code: colorInfo.code || colorId,
+                name_zh: colorInfo.name_zh || '未知',
+                name_en: colorInfo.name_en || 'Unknown',
+                rgb: colorInfo.rgb || [128, 128, 128],
+                count,
+                percentage: ((count / totalBeads) * 100).toFixed(1)
+            };
+        });
+
+    // 生成表格行
+    tbody.innerHTML = sortedColors.map((item, index) => `
+        <tr style="border-bottom: 1px solid #dee2e6; transition: background-color 0.2s;">
+            <td style="padding: 10px;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <div style="width: 28px; height: 28px; background: rgb(${item.rgb.join(',')});
+                               border: 2px solid #dee2e6; border-radius: 4px; display: inline-block;
+                               vertical-align: middle; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                    </div>
+                    <div>
+                        <div style="font-weight: 600; color: #495057;">${item.name_zh}</div>
+                        <div style="font-size: 12px; color: #6c757d;">${item.name_en}</div>
+                    </div>
+                </div>
+            </td>
+            <td style="padding: 10px; font-family: 'Courier New', monospace; font-weight: 600; color: #667eea;">${item.code}</td>
+            <td style="padding: 10px; text-align: right; font-weight: 600; color: #212529;">${item.count}</td>
+            <td style="padding: 10px; text-align: right; color: #6c757d;">
+                <span style="display: inline-block; min-width: 50px;">${item.percentage}%</span>
+                <!-- 简单的进度条 -->
+                <div style="width: 60px; height: 4px; background: #e9ecef; border-radius: 2px; display: inline-block; margin-left: 8px; vertical-align: middle;">
+                    <div style="width: ${item.percentage}%; height: 100%; background: linear-gradient(90deg, #667eea 0%, #764ba2 100%); border-radius: 2px;"></div>
+                </div>
+            </td>
+        </tr>
+    `).join('');
+
+    // 生成统计摘要
+    const topColors = sortedColors.slice(0, 5);
+    const topPercentage = topColors.reduce((sum, item) => sum + parseFloat(item.percentage), 0).toFixed(1);
+
+    summaryDiv.innerHTML = `
+        <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+            <span><strong>颜色种类:</strong> ${sortedColors.length}</span>
+            <span><strong>总拼豆数:</strong> ${totalBeads}</span>
+            <span><strong>最常用色号:</strong> ${sortedColors[0].code} (${sortedColors[0].count}个)</span>
+            <span><strong>前5色占比:</strong> ${topPercentage}%</span>
+        </div>
+    `;
+
+    console.log('颜色清单生成完成，共', sortedColors.length, '种颜色');
+}
+
+/**
+ * 收起/展开颜色清单
+ */
+function toggleColorList() {
+    const container = document.getElementById('colorListContainer');
+    const btn = document.getElementById('toggleColorListBtn');
+
+    if (!container || !btn) {
+        return;
+    }
+
+    if (container.style.display === 'none') {
+        container.style.display = 'block';
+        btn.textContent = '收起';
+    } else {
+        container.style.display = 'none';
+        btn.textContent = '展开';
     }
 }
 

@@ -12,6 +12,7 @@ a = Analysis(
         ('static', 'static'),
         ('data', 'data'),
         ('core', 'core'),
+        ('runtime_hooks', 'runtime_hooks'),
     ],
     hiddenimports=[
         'uvicorn.lifespan.on',
@@ -32,7 +33,7 @@ a = Analysis(
     ],
     hookspath=[],
     hooksconfig={},
-    runtime_hooks=[],
+    runtime_hooks=['runtime_hooks/hook_fix_stdio.py'],
     excludes=[],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,

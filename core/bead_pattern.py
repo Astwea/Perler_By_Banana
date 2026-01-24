@@ -355,23 +355,39 @@ class BeadPattern:
         else:
             base_font_size = max(12, cell_size // 2)
         
+        font_cache: Dict[int, ImageFont.ImageFont] = {}
+        text_layout_cache: Dict[str, Tuple[ImageFont.ImageFont, int, int]] = {}
+        display_code_cache: Dict[str, str] = {}
+
         def get_font(size):
             """获取指定大小的字体"""
+            cached = font_cache.get(size)
+            if cached is not None:
+                return cached
             try:
                 try:
-                    return ImageFont.truetype("arial.ttf", size)
+                    font = ImageFont.truetype("arial.ttf", size)
                 except:
                     try:
-                        return ImageFont.truetype("/System/Library/Fonts/Arial.ttf", size)
+                        font = ImageFont.truetype("/System/Library/Fonts/Arial.ttf", size)
                     except:
                         try:
-                            return ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", size)
+                            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", size)
                         except:
-                            return ImageFont.load_default()
+                            font = ImageFont.load_default()
             except:
-                return ImageFont.load_default()
+                font = ImageFont.load_default()
+            font_cache[size] = font
+            return font
         
         base_font = get_font(base_font_size)
+        stroke_width = max(1, cell_size // 30)
+        stroke_offsets = [
+            (adj_x, adj_y)
+            for adj_x in range(-stroke_width, stroke_width + 1)
+            for adj_y in range(-stroke_width, stroke_width + 1)
+            if adj_x != 0 or adj_y != 0
+        ]
         
         # 绘制拼豆
         for y in range(self.height):
@@ -404,31 +420,41 @@ class BeadPattern:
                         if code:
                             # 统一只显示色号编号（最后一部分），不显示品牌和系列信息
                             # 例如：COCO-291-A01 -> A01, Mard-120-B05 -> B05
-                            parts = code.split('-')
-                            if len(parts) > 1:
-                                display_code = parts[-1]  # 只显示最后一部分（色号编号）
-                            else:
-                                # 如果没有分隔符，直接使用code（可能是自定义色号）
-                                display_code = code
+                            display_code = display_code_cache.get(code)
+                            if display_code is None:
+                                parts = code.split('-')
+                                if len(parts) > 1:
+                                    display_code = parts[-1]  # 只显示最后一部分（色号编号）
+                                else:
+                                    # 如果没有分隔符，直接使用code（可能是自定义色号）
+                                    display_code = code
+                                display_code_cache[code] = display_code
                             
                             # 使用基础字体计算文字位置（居中）
-                            font = base_font
-                            bbox = draw.textbbox((0, 0), display_code, font=font)
-                            text_width = bbox[2] - bbox[0]
-                            text_height = bbox[3] - bbox[1]
-                            
-                            # 确保文字不超出格子，如果太宽则缩小字体
-                            if text_width > cell_size * 0.9:
-                                # 如果文字太宽，缩小字体
-                                scale = (cell_size * 0.9) / text_width
-                                adjusted_font_size = int(base_font_size * scale)
-                                if adjusted_font_size < 6:
-                                    adjusted_font_size = 6  # 最小字体大小
-                                font = get_font(adjusted_font_size)
-                                # 重新计算
+                            cached_layout = text_layout_cache.get(display_code)
+                            if cached_layout is None:
+                                font = base_font
                                 bbox = draw.textbbox((0, 0), display_code, font=font)
                                 text_width = bbox[2] - bbox[0]
                                 text_height = bbox[3] - bbox[1]
+                                
+                                # 确保文字不超出格子，如果太宽则缩小字体
+                                if text_width > cell_size * 0.9:
+                                    # 如果文字太宽，缩小字体
+                                    text_scale = (cell_size * 0.9) / text_width
+                                    adjusted_font_size = int(base_font_size * text_scale)
+                                    if adjusted_font_size < 6:
+                                        adjusted_font_size = 6  # 最小字体大小
+                                    font = get_font(adjusted_font_size)
+                                    # 重新计算
+                                    bbox = draw.textbbox((0, 0), display_code, font=font)
+                                    text_width = bbox[2] - bbox[0]
+                                    text_height = bbox[3] - bbox[1]
+                                
+                                cached_layout = (font, text_width, text_height)
+                                text_layout_cache[display_code] = cached_layout
+                            
+                            font, text_width, text_height = cached_layout
                             
                             text_x = x * cell_size + (cell_size - text_width) // 2
                             text_y = y * cell_size + (cell_size - text_height) // 2
@@ -443,15 +469,12 @@ class BeadPattern:
                                 text_color = (255, 255, 255)
                             
                             # 始终添加描边以确保文字清晰可见
-                            stroke_width = max(1, cell_size // 30)
                             # 先绘制描边（四周）
-                            for adj_x in range(-stroke_width, stroke_width + 1):
-                                for adj_y in range(-stroke_width, stroke_width + 1):
-                                    if adj_x != 0 or adj_y != 0:
-                                        # 描边颜色与文字颜色相反
-                                        stroke_color = (255, 255, 255) if text_color == (0, 0, 0) else (0, 0, 0)
-                                        draw.text((text_x + adj_x, text_y + adj_y), display_code, 
-                                                 fill=stroke_color, font=font)
+                            stroke_color = (255, 255, 255) if text_color == (0, 0, 0) else (0, 0, 0)
+                            for adj_x, adj_y in stroke_offsets:
+                                # 描边颜色与文字颜色相反
+                                draw.text((text_x + adj_x, text_y + adj_y), display_code, 
+                                         fill=stroke_color, font=font)
                             
                             # 再绘制文字
                             draw.text((text_x, text_y), display_code, fill=text_color, font=font)

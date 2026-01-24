@@ -1,0 +1,10 @@
+PyQt6>=6.6.0
+pillow>=9.5.0
+numpy>=1.21.6
+scikit-image>=0.19.3
+scikit-learn>=1.0.2
+matplotlib>=3.5.3
+reportlab>=4.0.4
+requests>=2.31.0
+pyinstaller>=6.0.0
+packaging>=23.0

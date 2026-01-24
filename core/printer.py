@@ -107,6 +107,40 @@ class Printer:
         cell_size_mm = self.bead_size_mm * scale
         cell_size_px = int(cell_size_mm * mm_to_pixel)
         
+        font_cache: Dict[int, ImageFont.ImageFont] = {}
+        text_layout_cache: Dict[str, Tuple[ImageFont.ImageFont, int, int]] = {}
+        display_code_cache: Dict[str, str] = {}
+        
+        def get_font(size: int) -> ImageFont.ImageFont:
+            cached = font_cache.get(size)
+            if cached is not None:
+                return cached
+            try:
+                try:
+                    font = ImageFont.truetype("arial.ttf", size)
+                except:
+                    try:
+                        font = ImageFont.truetype("/System/Library/Fonts/Arial.ttf", size)
+                    except:
+                        try:
+                            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", size)
+                        except:
+                            font = ImageFont.load_default()
+            except:
+                font = ImageFont.load_default()
+            font_cache[size] = font
+            return font
+        
+        base_font_size = max(8, cell_size_px // 3)
+        base_font = get_font(base_font_size)
+        stroke_width = max(1, cell_size_px // 30)
+        stroke_offsets = [
+            (adj_x, adj_y)
+            for adj_x in range(-stroke_width, stroke_width + 1)
+            for adj_y in range(-stroke_width, stroke_width + 1)
+            if adj_x != 0 or adj_y != 0
+        ]
+        
         # 计算图案在页面中的位置（居中）
         pattern_width_px = pattern.width * cell_size_px
         pattern_height_px = pattern.height * cell_size_px
@@ -145,54 +179,37 @@ class Printer:
                         if code:
                             # 统一只显示色号编号（最后一部分），不显示品牌和系列信息
                             # 例如：COCO-291-A01 -> A01, Mard-120-B05 -> B05
-                            parts = code.split('-')
-                            if len(parts) > 1:
-                                display_code = parts[-1]  # 只显示最后一部分（色号编号）
-                            else:
-                                # 如果没有分隔符，直接使用code（可能是自定义色号）
-                                display_code = code
+                            display_code = display_code_cache.get(code)
+                            if display_code is None:
+                                parts = code.split('-')
+                                if len(parts) > 1:
+                                    display_code = parts[-1]  # 只显示最后一部分（色号编号）
+                                else:
+                                    # 如果没有分隔符，直接使用code（可能是自定义色号）
+                                    display_code = code
+                                display_code_cache[code] = display_code
                             
-                            try:
-                                # 尝试使用系统字体
-                                font_size = max(8, cell_size_px // 3)
-                                try:
-                                    font = ImageFont.truetype("arial.ttf", font_size)
-                                except:
-                                    try:
-                                        font = ImageFont.truetype("/System/Library/Fonts/Arial.ttf", font_size)
-                                    except:
-                                        try:
-                                            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", font_size)
-                                        except:
-                                            font = ImageFont.load_default()
-                            except:
-                                font = ImageFont.load_default()
-                            
-                            bbox = draw.textbbox((0, 0), display_code, font=font)
-                            text_width = bbox[2] - bbox[0]
-                            text_height = bbox[3] - bbox[1]
-                            
-                            # 确保文字不超出格子，如果太宽则缩小字体
-                            if text_width > cell_size_px * 0.9:
-                                scale = (cell_size_px * 0.9) / text_width
-                                adjusted_font_size = max(6, int(font_size * scale))
-                                try:
-                                    try:
-                                        font = ImageFont.truetype("arial.ttf", adjusted_font_size)
-                                    except:
-                                        try:
-                                            font = ImageFont.truetype("/System/Library/Fonts/Arial.ttf", adjusted_font_size)
-                                        except:
-                                            try:
-                                                font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", adjusted_font_size)
-                                            except:
-                                                font = ImageFont.load_default()
-                                except:
-                                    font = ImageFont.load_default()
-                                # 重新计算
+                            cached_layout = text_layout_cache.get(display_code)
+                            if cached_layout is None:
+                                font = base_font
                                 bbox = draw.textbbox((0, 0), display_code, font=font)
                                 text_width = bbox[2] - bbox[0]
                                 text_height = bbox[3] - bbox[1]
+                                
+                                # 确保文字不超出格子，如果太宽则缩小字体
+                                if text_width > cell_size_px * 0.9:
+                                    text_scale = (cell_size_px * 0.9) / text_width
+                                    adjusted_font_size = max(6, int(base_font_size * text_scale))
+                                    font = get_font(adjusted_font_size)
+                                    # 重新计算
+                                    bbox = draw.textbbox((0, 0), display_code, font=font)
+                                    text_width = bbox[2] - bbox[0]
+                                    text_height = bbox[3] - bbox[1]
+                                
+                                cached_layout = (font, text_width, text_height)
+                                text_layout_cache[display_code] = cached_layout
+                            
+                            font, text_width, text_height = cached_layout
                             
                             text_x = start_x + x * cell_size_px + (cell_size_px - text_width) // 2
                             text_y = start_y + y * cell_size_px + (cell_size_px - text_height) // 2
@@ -209,13 +226,10 @@ class Printer:
                                 stroke_color = (0, 0, 0)
                             
                             # 添加描边以确保文字清晰可见
-                            stroke_width = max(1, cell_size_px // 30)
                             # 先绘制描边（四周）
-                            for adj_x in range(-stroke_width, stroke_width + 1):
-                                for adj_y in range(-stroke_width, stroke_width + 1):
-                                    if adj_x != 0 or adj_y != 0:
-                                        draw.text((text_x + adj_x, text_y + adj_y), display_code, 
-                                                 fill=stroke_color, font=font)
+                            for adj_x, adj_y in stroke_offsets:
+                                draw.text((text_x + adj_x, text_y + adj_y), display_code, 
+                                         fill=stroke_color, font=font)
                             
                             # 再绘制文字
                             draw.text((text_x, text_y), display_code, fill=text_color, font=font)

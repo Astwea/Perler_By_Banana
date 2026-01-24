@@ -1,0 +1,24 @@
+{
+  "language": "zh_CN",
+  "theme": "light_blue",
+  "nano_banana_api_key": "",
+  "nano_banana_base_url": "https://api.grsai.com",
+  "nano_banana_proxy": "",
+  "auto_check_updates": true,
+  "last_update_check": "",
+  "skipped_version": "",
+  "max_history_items": 100,
+  "default_bead_size": 2.6,
+  "default_max_dimension": 200,
+  "default_target_colors": 20,
+  "remember_last_params": true,
+  "window_geometry": {
+    "x": 154,
+    "y": 30,
+    "width": 1400,
+    "height": 900,
+    "maximized": false
+  },
+  "nano_banana_model": "nano-banana-fast",
+  "nano_banana_image_size": "1K"
+}
