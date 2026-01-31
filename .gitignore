@@ -59,6 +59,17 @@ static/output/**/*.csv
 # Custom colors (user data)
 data/custom_colors.json
 
+# Runtime data (desktop app)
+data/history.json
+data/output/
+
+# Local test artifacts
+test_output/
+test_log.txt
+
+# Backups
+*.backup
+
 # Logs
 *.log
 logs/

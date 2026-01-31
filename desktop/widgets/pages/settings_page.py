@@ -146,8 +146,9 @@ class SettingsPage(QWidget):
         output_label = QLabel("输出目录 / Output Directory:")
         output_label.setMinimumWidth(150)
         self.output_dir_input = QLineEdit()
-        self.output_dir_input.setPlaceholderText("默认: ./output")
-        self.output_dir_input.setText("./output")
+        default_output_dir = self.config.get_default_output_dir()
+        self.output_dir_input.setPlaceholderText(f"默认: {default_output_dir}")
+        self.output_dir_input.setText(default_output_dir)
         self.output_dir_input.setReadOnly(True)
         self.output_dir_input.setMinimumHeight(36)
         output_layout.addWidget(output_label)
@@ -268,7 +269,7 @@ class SettingsPage(QWidget):
             self.api_key_input.clear()
             self.base_url_input.setText("https://api.grsai.com")
             self.proxy_input.clear()
-            self.output_dir_input.setText("./output")
+            self.output_dir_input.setText(self.config.get_default_output_dir())
             self.image_format_combo.setCurrentIndex(0)
             self.dpi_spin.setValue(300)
             self.auto_save_checkbox.setChecked(True)
@@ -336,7 +337,7 @@ class SettingsPage(QWidget):
             'api_key': self.config.get('nano_banana_api_key', ''),
             'base_url': self.config.get('nano_banana_base_url', 'https://api.grsai.com'),
             'proxy': self.config.get('nano_banana_proxy', ''),
-            'output_dir': self.config.get('output_dir', './output'),
+            'output_dir': self.config.get('output_dir', self.config.get_default_output_dir()),
             'image_format': self.config.get('image_format', 'PNG'),
             'dpi': self.config.get('print_dpi', 300),
             'auto_save': self.config.get('auto_save_project', True),

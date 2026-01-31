@@ -17,6 +17,7 @@ from core.image_processor import ImageProcessor
 from core.color_matcher import ColorMatcher
 from core.optimizer import PatternOptimizer
 from bead_pattern import BeadPattern
+from desktop.config import ConfigManager
 
 
 class ProcessStep(Enum):
@@ -237,7 +238,9 @@ class ProcessPage(QWidget):
             self.progress_bar.setValue(progress)
             self.step_label.setText(step)
             self.log_message(message)
-            QApplication.instance().processEvents()
+        app_instance = QApplication.instance()
+        if app_instance is not None:
+            app_instance.processEvents()
 
         if self.stop_btn.isEnabled():
             self.start_btn.setEnabled(True)
@@ -376,12 +379,17 @@ class ProcessPage(QWidget):
         self.progress_bar.setValue(value)
         self.step_label.setText(step_text)
         self.log_message(log_message)
-        QApplication.instance().processEvents()
+        app_instance = QApplication.instance()
+        if app_instance is not None:
+            app_instance.processEvents()
 
     def _get_output_dir(self) -> Path:
         """获取输出目录"""
-        base_dir = Path(__file__).resolve().parents[3]
-        output_dir = base_dir / 'data' / 'output'
+        config = ConfigManager()
+        output_dir_value = config.get('output_dir', config.get_default_output_dir())
+        if not isinstance(output_dir_value, str) or not output_dir_value:
+            output_dir_value = config.get_default_output_dir()
+        output_dir = Path(output_dir_value).expanduser()
         output_dir.mkdir(parents=True, exist_ok=True)
         return output_dir
 

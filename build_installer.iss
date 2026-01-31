@@ -54,6 +54,14 @@ Name: "associate"; Description: "关联图片文件 / Associate Image Files"; Gr
 ; 复制程序文件
 Source: "dist\拼豆图案生成系统\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
+[Dirs]
+; 创建用户项目空间
+Name: "{userprofile}\PerlerByBanana\workspace"; Flags: uninsneveruninstall
+Name: "{userprofile}\PerlerByBanana\workspace\output"; Flags: uninsneveruninstall
+Name: "{userprofile}\PerlerByBanana\workspace\images"; Flags: uninsneveruninstall
+Name: "{userprofile}\PerlerByBanana\workspace\logs"; Flags: uninsneveruninstall
+Name: "{userprofile}\PerlerByBanana\workspace\user_data"; Flags: uninsneveruninstall
+
 [Icons]
 ; 开始菜单快捷方式（中文）
 Name: "{group}\拼豆图案生成系统"; Filename: "{app}\拼豆图案生成系统.exe"; IconFilename: "{app}\app_icon.ico"; Languages: chinesesimp

@@ -106,17 +106,16 @@ K-means聚类减少颜色数（值越大细节越多但更慢）。
 
 ### 💾 数据存储
 
-所有用户数据存储在安装目录下的 `data` 子目录：
+所有用户数据存储在用户项目空间（默认在用户目录下）：
 
 ```
-拼豆图案生成系统/
-├── data/
-│   ├── config.json          # 配置文件
-│   ├── history.json         # 历史记录
-│   ├── user_data/          # 用户数据
-│   ├── images/             # 上传的图片
-│   ├── output/             # 处理结果
-│   └── logs/               # 日志文件
+%USERPROFILE%/PerlerByBanana/workspace/
+├── config.json          # 配置文件
+├── history.json         # 历史记录
+├── user_data/          # 用户数据
+├── images/             # 上传的图片
+├── output/             # 处理结果
+└── logs/               # 日志文件
 ```
 
 ### 📦 打包和部署

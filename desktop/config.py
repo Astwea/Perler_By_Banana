@@ -1,10 +1,11 @@
 """
 桌面应用配置管理器
-数据存储在安装目录
+数据存储在用户项目空间
 """
 import json
 import os
 from pathlib import Path
+from typing import Any, Dict, List
 
 
 class ConfigManager:
@@ -20,9 +21,9 @@ class ConfigManager:
 
     def _initialize(self):
         """初始化配置管理器"""
-        # 数据目录（安装目录下的data子目录）
+        # 数据目录（用户项目空间）
         self.app_dir = Path(__file__).parent.parent
-        self.data_dir = self.app_dir / 'data'
+        self.data_dir = self._get_default_data_dir()
         self.config_file = self.data_dir / 'config.json'
         self.history_file = self.data_dir / 'history.json'
         self.user_data_dir = self.data_dir / 'user_data'
@@ -30,6 +31,9 @@ class ConfigManager:
         # 确保目录存在
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.user_data_dir.mkdir(parents=True, exist_ok=True)
+        (self.data_dir / 'output').mkdir(parents=True, exist_ok=True)
+        (self.data_dir / 'images').mkdir(parents=True, exist_ok=True)
+        (self.data_dir / 'logs').mkdir(parents=True, exist_ok=True)
 
         # 配置数据（共享）
         if ConfigManager._config is None:
@@ -55,7 +59,7 @@ class ConfigManager:
             'window_geometry': {},
             'nano_banana_model': 'nano-banana-fast',
             'nano_banana_image_size': '1K',
-            'output_dir': './output',
+            'output_dir': self.get_default_output_dir(),
             'image_format': 'PNG',
             'print_dpi': 300,
             'auto_save_project': True,
@@ -79,6 +83,18 @@ class ConfigManager:
                 json.dump(self.config, f, indent=2, ensure_ascii=False)
         except Exception as e:
             print(f"Failed to save config: {e}")
+
+    def _get_default_data_dir(self) -> Path:
+        """获取默认数据目录"""
+        env_dir = os.getenv('PERLER_BY_BANANA_WORKSPACE')
+        if env_dir:
+            return Path(env_dir).expanduser()
+
+        return Path.home() / 'PerlerByBanana' / 'workspace'
+
+    def get_default_output_dir(self) -> str:
+        """获取默认输出目录"""
+        return str(self.data_dir / 'output')
 
     def get(self, key, default=None):
         """获取配置值"""
@@ -151,7 +167,8 @@ class ConfigManager:
         history.insert(0, item)  # 添加到开头
 
         # 限制数量
-        max_items = self.get('max_history_items', 100)
+        max_items_value = self.get('max_history_items', 100)
+        max_items = max_items_value if isinstance(max_items_value, int) else 100
         if len(history) > max_items:
             history = history[:max_items]
 
@@ -161,7 +178,7 @@ class ConfigManager:
         except Exception:
             pass
 
-    def get_history(self):
+    def get_history(self) -> List[Dict[str, Any]]:
         """获取历史记录"""
         if not self.history_file.exists():
             return []
@@ -190,6 +207,7 @@ class ConfigManager:
         """保存上次使用的参数"""
         self.set('last_params', params)
 
-    def get_last_params(self) -> dict:
+    def get_last_params(self) -> Dict[str, Any]:
         """获取上次使用的参数"""
-        return self.get('last_params', {})
+        params_value = self.get('last_params', {})
+        return params_value if isinstance(params_value, dict) else {}
