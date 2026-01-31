@@ -12,15 +12,19 @@ import os
 import json
 from datetime import datetime
 
+from desktop.config import ConfigManager
+
 
 class HistoryPage(QWidget):
     """历史记录页面"""
 
-    history_selected = pyqtSignal(str)  # 历史记录选中信号
+    history_selected = pyqtSignal(str, dict)  # 历史记录选中信号 (path, params)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.history_records = []
+        self.config = ConfigManager()
+        self.history_path = os.path.join(self.config.get_data_dir(), 'history.json')
         self.init_ui()
         self.load_history()
 
@@ -93,16 +97,17 @@ class HistoryPage(QWidget):
 
     def load_history(self):
         """加载历史记录"""
-        history_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '..', '..', 'data', 'history.json')
-
-        if os.path.exists(history_path):
+        if os.path.exists(self.history_path):
             try:
-                with open(history_path, 'r', encoding='utf-8') as f:
+                with open(self.history_path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                     self.history_records = data.get('records', [])
                     self.update_table()
             except Exception:
                 self.history_records = []
+        else:
+            self.history_records = []
+            self.update_table()
 
     def update_table(self):
         """更新表格"""
@@ -124,7 +129,7 @@ class HistoryPage(QWidget):
         self.open_btn.setEnabled(True)
         if row < len(self.history_records):
             record = self.history_records[row]
-            self.history_selected.emit(record.get('path', ''))
+            self.history_selected.emit(record.get('path', ''), record.get('params', {}))
 
     def on_open_project(self):
         """打开项目"""
@@ -133,7 +138,7 @@ class HistoryPage(QWidget):
             record = self.history_records[selected_row]
             path = record.get('path', '')
             if path and os.path.exists(path):
-                self.history_selected.emit(path)
+                self.history_selected.emit(path, record.get('params', {}))
             else:
                 QMessageBox.warning(self, "警告 / Warning", "文件不存在 / File does not exist")
 
@@ -152,6 +157,7 @@ class HistoryPage(QWidget):
                 del self.history_records[selected_row]
                 self.update_table()
                 self.open_btn.setEnabled(False)
+                self.save_history()
 
     def on_clear_all(self):
         """清空所有记录"""
@@ -166,8 +172,9 @@ class HistoryPage(QWidget):
             self.history_records = []
             self.update_table()
             self.open_btn.setEnabled(False)
+            self.save_history()
 
-    def add_record(self, filename: str, path: str, width: int, height: int, color_count: int):
+    def add_record(self, filename: str, path: str, width: int, height: int, color_count: int, params: dict = None):
         """添加历史记录"""
         record = {
             'time': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -177,6 +184,8 @@ class HistoryPage(QWidget):
             'height': height,
             'color_count': color_count
         }
+        if params:
+            record['params'] = params
 
         # 插入到开头
         self.history_records.insert(0, record)
@@ -190,11 +199,9 @@ class HistoryPage(QWidget):
 
     def save_history(self):
         """保存历史记录"""
-        history_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '..', '..', 'data', 'history.json')
-
         try:
             data = {'records': self.history_records}
-            with open(history_path, 'w', encoding='utf-8') as f:
+            with open(self.history_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
         except Exception:
             pass

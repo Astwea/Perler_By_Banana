@@ -6,7 +6,7 @@ let currentPattern = null;
 let stepStatus = {}; // 存储每个步骤的状态
 let isExecuting = false; // 是否正在执行
 let shouldStopExecution = false; // 是否应该停止执行
-let executionController = null; // 执行控制器（用于AbortController）
+let executionController = null; // 执行控制器(用于AbortController)
 
 // DOM元素
 const uploadArea = document.querySelector('.upload-area') || createUploadArea();
@@ -603,9 +603,10 @@ function setupExportButtons() {
     const exportJsonBtn = document.getElementById('exportJsonBtn');
     const exportCsvBtn = document.getElementById('exportCsvBtn');
     const exportPngBtn = document.getElementById('exportPngBtn');
+    const exportTechnicalSheetBtn = document.getElementById('exportTechnicalSheetBtn');
     const printPreviewBtn = document.getElementById('printPreviewBtn');
     const printBtn = document.getElementById('printBtn');
-    
+
     // 使用 onclick 属性，避免重复绑定问题
     if (exportJsonBtn) {
         exportJsonBtn.onclick = () => exportPattern('json');
@@ -615,6 +616,9 @@ function setupExportButtons() {
     }
     if (exportPngBtn) {
         exportPngBtn.onclick = () => exportPattern('png');
+    }
+    if (exportTechnicalSheetBtn) {
+        exportTechnicalSheetBtn.onclick = exportTechnicalSheet;
     }
     if (printPreviewBtn) {
         printPreviewBtn.onclick = showPrintPreview;
@@ -690,15 +694,20 @@ async function handleFile(file) {
         const data = await response.json();
         currentFileId = data.file_id;
         
-        // 显示上传成功信息
         const uploadArea = document.getElementById('uploadArea');
         if (uploadArea) {
             uploadArea.innerHTML = `
-                <p style="color: green; font-weight: bold;">✓ 图片上传成功！</p>
-                <p>文件名: ${data.filename}</p>
-                <p>尺寸: ${data.width} × ${data.height} 像素</p>
-                <p style="color: #667eea; margin-top: 10px;">可以点击"生成图案"按钮开始处理</p>
+                <p style="color: #059669; font-weight: 700; font-size: 18px; margin-bottom: 12px;">✓ 图片上传成功！</p>
+                <img src="${data.image_url}" alt="上传的图片" style="max-width: 100%; max-height: 300px; display: block; margin: 0 auto 12px auto; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+                <p style="color: #1f2937; font-weight: 500;">文件名: ${data.filename}</p>
+                <p style="color: #1f2937; font-weight: 500;">尺寸: ${data.width} × ${data.height} 像素</p>
+                <p style="color: #5a67d8; margin-top: 12px; font-weight: 600;">点击下方"一键执行全部步骤"开始处理</p>
+                <input type="file" id="fileInput" accept="image/*" style="display: none;">
             `;
+            const newFileInput = uploadArea.querySelector('#fileInput');
+            if (newFileInput) {
+                newFileInput.addEventListener('change', handleFileSelect);
+            }
         }
         
         // 启用步骤按钮
@@ -849,6 +858,53 @@ async function exportPattern(format) {
         showSuccess('导出成功！');
     } catch (error) {
         showError('导出失败: ' + error.message);
+    }
+}
+
+// 导出工程图（含信息面板）
+async function exportTechnicalSheet() {
+    if (!currentPatternId) {
+        showError('请先生成图案');
+        return;
+    }
+
+    try {
+        const params = {
+            font_size: 12,
+            color_block_size: 24,
+            row_height: 32,
+            panel_padding: 20,
+            margin_from_pattern: 20,
+            show_total_count: true,
+            show_dimensions: true,
+            show_bead_size: true,
+            sort_by_count: true,
+            exclude_background: true
+        };
+
+        const response = await fetch(`/api/pattern/${currentPatternId}/technical-sheet`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(params)
+        });
+
+        if (!response.ok) {
+            throw new Error('导出工程图失败');
+        }
+
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `pattern_${currentPatternId}_technical_sheet.png`;
+        a.click();
+        window.URL.revokeObjectURL(url);
+
+        showSuccess('工程图导出成功！');
+    } catch (error) {
+        showError('导出工程图失败: ' + error.message);
     }
 }
 
@@ -1346,13 +1402,28 @@ async function runGeneratePattern() {
                     </div>
                 </div>
                 <div style="margin-top: 15px; padding: 10px; background: white; border-radius: 5px;">
-                    <p><strong>图案总尺寸:</strong> ${data.width} × ${data.height} 拼豆 (${data.actual_width_mm.toFixed(1)} × ${data.actual_height_mm.toFixed(1)} mm)</p>
-                    ${data.subject_width && data.subject_height ? `
-                    <p style="color: #667eea; font-weight: 600; margin-top: 8px;">
-                        <strong>主体尺寸:</strong> ${data.subject_width} × ${data.subject_height} 拼豆 (${data.subject_width_mm.toFixed(1)} × ${data.subject_height_mm.toFixed(1)} mm)
-                        <span style="font-size: 0.85em; color: #666; margin-left: 10px;">※ 已排除背景</span>
-                    </p>
-                    ` : ''}
+                    ${(() => {
+                        const sw = data.subject_width || 0;
+                        const sh = data.subject_height || 0;
+                        const swmm = data.subject_width_mm || 0;
+                        const shmm = data.subject_height_mm || 0;
+                        const tw = data.width || 0;
+                        const th = data.height || 0;
+                        const twmm = data.actual_width_mm || 0;
+                        const thmm = data.actual_height_mm || 0;
+
+                        const patternW = (sw > 0 && sh > 0) ? sw : tw;
+                        const patternH = (sw > 0 && sh > 0) ? sh : th;
+                        const beadW = (swmm > 0 && shmm > 0) ? swmm / 10 : twmm / 10;
+                        const beadH = (swmm > 0 && shmm > 0) ? shmm / 10 : thmm / 10;
+
+                        return `
+                        <p><strong>图案尺寸:</strong> ${patternW} × ${patternH} 拼豆</p>
+                        <p style="color: #667eea; font-weight: 600; margin-top: 8px;">
+                            <strong>拼豆尺寸:</strong> ${beadW.toFixed(1)} × ${beadH.toFixed(1)} cm
+                            ${sw > 0 && sh > 0 ? '<span style="font-size: 0.85em; color: #666; margin-left: 10px;">※ 已排除背景</span>' : ''}
+                        </p>`;
+                    })()}
                     <p><strong>使用颜色数:</strong> ${stats.unique_colors}</p>
                     <p><strong>总拼豆数:</strong> ${stats.total_beads} 
                     ${data.subject_statistics && data.subject_statistics.subject_beads ? `
@@ -1372,13 +1443,13 @@ async function runGeneratePattern() {
                     </div>
                     <div id="colorListContainer" style="max-height: 400px; overflow-y: auto;">
                         <!-- 颜色清单表格 -->
-                        <table style="width: 100%; border-collapse: collapse; font-size: 14px; background: white; border-radius: 5px; overflow: hidden;">
+                        <table style="width: 100%; border-collapse: collapse; font-family: 'Segoe UI', 'Microsoft YaHei', -apple-system, BlinkMacSystemFont, sans-serif; font-size: 15px; background: white; border-radius: 5px; overflow: hidden;">
                             <thead>
                                 <tr style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; position: sticky; top: 0; z-index: 10;">
-                                    <th style="padding: 12px 10px; text-align: left;">颜色</th>
-                                    <th style="padding: 12px 10px; text-align: left;">色号</th>
-                                    <th style="padding: 12px 10px; text-align: right;">数量</th>
-                                    <th style="padding: 12px 10px; text-align: right;">占比</th>
+                                    <th style="padding: 12px 10px; text-align: left; font-weight: 700; font-size: 16px;">颜色</th>
+                                    <th style="padding: 12px 10px; text-align: left; font-weight: 700; font-size: 16px;">色号</th>
+                                    <th style="padding: 12px 10px; text-align: right; font-weight: 700; font-size: 16px;">数量</th>
+                                    <th style="padding: 12px 10px; text-align: right; font-weight: 700; font-size: 16px;">占比</th>
                                 </tr>
                             </thead>
                             <tbody id="colorListBody">
@@ -1386,7 +1457,7 @@ async function runGeneratePattern() {
                             </tbody>
                         </table>
                     </div>
-                    <div id="colorListSummary" style="margin-top: 10px; padding: 10px; background: white; border-radius: 5px; font-size: 14px; color: #6c757d;">
+                    <div id="colorListSummary" style="margin-top: 10px; padding: 10px; background: white; border-radius: 5px; font-family: 'Segoe UI', 'Microsoft YaHei', -apple-system, BlinkMacSystemFont, sans-serif; font-size: 15px; color: #6c757d;">
                         <!-- 统计摘要 -->
                     </div>
                 </div>
@@ -1532,15 +1603,15 @@ function generateColorList(colorCounts, colorDetails, totalBeads) {
                                vertical-align: middle; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                     </div>
                     <div>
-                        <div style="font-weight: 600; color: #495057;">${item.name_zh}</div>
-                        <div style="font-size: 12px; color: #6c757d;">${item.name_en}</div>
+                        <div style="font-family: 'Segoe UI', 'Microsoft YaHei', -apple-system, BlinkMacSystemFont, sans-serif; font-weight: 700; font-size: 15px; color: #212529;">${item.name_zh}</div>
+                        <div style="font-family: 'Segoe UI', 'Microsoft YaHei', -apple-system, BlinkMacSystemFont, sans-serif; font-size: 13px; color: #6c757d;">${item.name_en}</div>
                     </div>
                 </div>
             </td>
-            <td style="padding: 10px; font-family: 'Courier New', monospace; font-weight: 600; color: #667eea;">${item.code}</td>
-            <td style="padding: 10px; text-align: right; font-weight: 600; color: #212529;">${item.count}</td>
-            <td style="padding: 10px; text-align: right; color: #6c757d;">
-                <span style="display: inline-block; min-width: 50px;">${item.percentage}%</span>
+            <td style="padding: 10px; font-family: 'Segoe UI', 'Microsoft YaHei', -apple-system, BlinkMacSystemFont, sans-serif; font-weight: 700; font-size: 15px; color: #667eea;">${item.code}</td>
+            <td style="padding: 10px; text-align: right; font-family: 'Segoe UI', 'Microsoft YaHei', -apple-system, BlinkMacSystemFont, sans-serif; font-weight: 700; font-size: 15px; color: #212529;">${item.count}</td>
+            <td style="padding: 10px; text-align: right; font-family: 'Segoe UI', 'Microsoft YaHei', -apple-system, BlinkMacSystemFont, sans-serif; color: #6c757d;">
+                <span style="display: inline-block; min-width: 50px; font-size: 15px;">${item.percentage}%</span>
                 <!-- 简单的进度条 -->
                 <div style="width: 60px; height: 4px; background: #e9ecef; border-radius: 2px; display: inline-block; margin-left: 8px; vertical-align: middle;">
                     <div style="width: ${item.percentage}%; height: 100%; background: linear-gradient(90deg, #667eea 0%, #764ba2 100%); border-radius: 2px;"></div>
@@ -1554,11 +1625,11 @@ function generateColorList(colorCounts, colorDetails, totalBeads) {
     const topPercentage = topColors.reduce((sum, item) => sum + parseFloat(item.percentage), 0).toFixed(1);
 
     summaryDiv.innerHTML = `
-        <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
-            <span><strong>颜色种类:</strong> ${sortedColors.length}</span>
-            <span><strong>总拼豆数:</strong> ${totalBeads}</span>
-            <span><strong>最常用色号:</strong> ${sortedColors[0].code} (${sortedColors[0].count}个)</span>
-            <span><strong>前5色占比:</strong> ${topPercentage}%</span>
+        <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px; font-weight: 600;">
+            <span style="color: #495057;"><strong>颜色种类:</strong> <span style="color: #667eea;">${sortedColors.length}</span></span>
+            <span style="color: #495057;"><strong>总拼豆数:</strong> <span style="color: #667eea;">${totalBeads}</span></span>
+            <span style="color: #495057;"><strong>最常用色号:</strong> <span style="color: #667eea; font-weight: 700;">${sortedColors[0].code}</span> (<span style="color: #667eea;">${sortedColors[0].count}</span>个)</span>
+            <span style="color: #495057;"><strong>前5色占比:</strong> <span style="color: #667eea;">${topPercentage}%</span></span>
         </div>
     `;
 

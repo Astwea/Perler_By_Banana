@@ -4,11 +4,19 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QProgressBar, QGroupBox, QTextEdit,
-    QScrollArea
+    QScrollArea, QApplication
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont
 from enum import Enum
+from pathlib import Path
+import uuid
+from PIL import Image
+
+from core.image_processor import ImageProcessor
+from core.color_matcher import ColorMatcher
+from core.optimizer import PatternOptimizer
+from bead_pattern import BeadPattern
 
 
 class ProcessStep(Enum):
@@ -28,6 +36,9 @@ class ProcessPage(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.current_step = None
+        self.image_path = None
+        self.params = {}
+        self.pattern_object = None
         self.init_ui()
 
     def init_ui(self):
@@ -113,6 +124,23 @@ class ProcessPage(QWidget):
         self.start_btn = QPushButton("▶️ 开始处理 / Start Processing")
         self.start_btn.setMinimumHeight(50)
         self.start_btn.clicked.connect(self.on_start_clicked)
+        self.start_btn.setAutoFillBackground(True)
+        self.start_btn.setFlat(False)
+        self.start_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #4A90E2;
+                color: white;
+                border-radius: 8px;
+                border: none;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #5DA3F5;
+            }
+            QPushButton:pressed {
+                background-color: #357ABD;
+            }
+        """)
         btn_layout.addWidget(self.start_btn)
 
         self.stop_btn = QPushButton("⏹️ 停止 / Stop")
@@ -120,6 +148,24 @@ class ProcessPage(QWidget):
         self.stop_btn.setProperty("class", "danger")
         self.stop_btn.setEnabled(False)
         self.stop_btn.clicked.connect(self.on_stop_clicked)
+        self.stop_btn.setAutoFillBackground(True)
+        self.stop_btn.setFlat(False)
+        self.stop_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #E74C3C;
+                color: white;
+                border-radius: 8px;
+                border: none;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #D6453A;
+            }
+            QPushButton:disabled {
+                background: #E1E8F0;
+                color: #7F8C8D;
+            }
+        """)
         btn_layout.addWidget(self.stop_btn)
 
         layout.addLayout(btn_layout)
@@ -129,22 +175,37 @@ class ProcessPage(QWidget):
         execute_all_btn.setMinimumHeight(50)
         execute_all_btn.setProperty("class", "success")
         execute_all_btn.clicked.connect(self.on_execute_all_clicked)
+        execute_all_btn.setAutoFillBackground(True)
+        execute_all_btn.setFlat(False)
+        execute_all_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2ECC71;
+                color: white;
+                border-radius: 8px;
+                border: none;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #34D175;
+            }
+            QPushButton:pressed {
+                background-color: #27AE60;
+            }
+        """)
         layout.addWidget(execute_all_btn)
 
     def on_start_clicked(self):
         """开始处理按钮点击事件"""
-        self.log_message("开始处理 / Start processing...")
-        self.progress_bar.setValue(10)
-        self.step_label.setText("预处理 / Preprocessing")
-        # TODO: 实际处理逻辑
-        self.simulate_processing()
+        self.start_btn.setEnabled(False)
+        self.stop_btn.setEnabled(True)
+        self.run_processing()
 
     def on_execute_all_clicked(self):
         """一键执行所有步骤按钮点击事件"""
         self.log_message("一键执行所有步骤 / Execute all steps...")
         self.start_btn.setEnabled(False)
         self.stop_btn.setEnabled(True)
-        self.simulate_processing()
+        self.run_processing()
 
     def on_stop_clicked(self):
         """停止按钮点击事件"""
@@ -182,6 +243,147 @@ class ProcessPage(QWidget):
             self.start_btn.setEnabled(True)
             self.stop_btn.setEnabled(False)
             self.process_completed.emit({})
+
+    def set_input_image(self, image_path: str) -> None:
+        """设置输入图像路径"""
+        self.image_path = image_path
+
+    def set_params(self, params: dict) -> None:
+        """设置处理参数"""
+        self.params = params or {}
+
+    def run_processing(self) -> None:
+        """执行实际处理流程"""
+        if not self.image_path:
+            self.log_message("请先上传图片 / Please upload an image first")
+            self.start_btn.setEnabled(True)
+            self.stop_btn.setEnabled(False)
+            return
+
+        try:
+            self._set_progress(5, "预处理 / Preprocessing", "正在加载图像...")
+            image_processor = ImageProcessor()
+            color_matcher = ColorMatcher()
+            pattern_optimizer = PatternOptimizer(color_matcher)
+
+            bead_size_value = self.params.get('bead_size', '5.0mm')
+            bead_size_mm = 2.6 if bead_size_value == '2.6mm' else 5.0
+            max_dimension = int(self.params.get('max_dimension', 100))
+            target_colors = int(self.params.get('target_colors', 20))
+            denoise_strength = float(self.params.get('denoise_strength', 0.3))
+            contrast_factor = float(self.params.get('contrast', 1.2))
+            sharpness_factor = float(self.params.get('sharpness', 1.0))
+            use_custom = bool(self.params.get('use_custom_palette', False))
+            brand = self.params.get('brand') or None
+            series = self.params.get('series') or None
+            match_mode = self.params.get('match_mode', 'nearest')
+
+            image_processor.load_image(self.image_path)
+            image_array = image_processor.get_image_array()
+
+            self._set_progress(20, "预处理 / Preprocessing", "应用降噪和对比度调整...")
+            optimized_image, (new_width, new_height) = pattern_optimizer.apply_full_optimization(
+                image_array,
+                target_colors=target_colors,
+                max_dimension=max_dimension,
+                denoise_strength=denoise_strength,
+                contrast_factor=contrast_factor,
+                sharpness_factor=sharpness_factor,
+                use_custom=use_custom,
+                based_on_subject=True,
+                background_rgb=(255, 255, 255),
+                threshold=5
+            )
+
+            output_dir = self._get_output_dir()
+            preprocess_path = output_dir / f"preprocess_{uuid.uuid4().hex}.png"
+            Image.fromarray(optimized_image).save(preprocess_path)
+
+            self._set_progress(50, "图案生成 / Pattern Generation", "匹配拼豆色板颜色...")
+            matched_colors = color_matcher.match_image_colors(
+                optimized_image,
+                use_custom=use_custom,
+                method="cie94",
+                brand=brand,
+                series=series,
+                match_mode=match_mode
+            )
+
+            self._set_progress(70, "图案生成 / Pattern Generation", "生成拼豆图案网格...")
+            bead_pattern = BeadPattern(new_width, new_height, bead_size_mm=bead_size_mm)
+            bead_pattern.from_matched_colors(matched_colors)
+
+            preview_cell_size = 8
+            viz_with_labels = bead_pattern.to_image(cell_size=preview_cell_size, show_labels=True, show_grid=True)
+            viz_no_labels = bead_pattern.to_image(cell_size=preview_cell_size, show_labels=False, show_grid=True)
+
+            pattern_id = uuid.uuid4().hex
+            viz_path_with = output_dir / f"{pattern_id}_viz.png"
+            viz_path_no = output_dir / f"{pattern_id}_viz_no_labels.png"
+            viz_with_labels.save(viz_path_with)
+            viz_no_labels.save(viz_path_no)
+
+            stats = bead_pattern.get_color_statistics(exclude_background=True)
+            color_counts = stats.get('color_counts', {})
+
+            color_details = {}
+            for color_id, count in color_counts.items():
+                color_info = bead_pattern._v2.palette.get_color(color_id)
+                if color_info:
+                    color_details[color_id] = {
+                        'id': color_info.id,
+                        'code': color_info.display_code,
+                        'name_zh': color_info.name_zh,
+                        'name_en': color_info.name_en,
+                        'rgb': list(color_info.rgb)
+                    }
+
+            subject_size = bead_pattern.get_subject_size()
+
+            result_data = {
+                'width': new_width,
+                'height': new_height,
+                'actual_width_mm': bead_pattern.actual_width_mm,
+                'actual_height_mm': bead_pattern.actual_height_mm,
+                'color_count': stats.get('unique_colors', 0),
+                'total_beads': stats.get('total_beads', new_width * new_height),
+                'bead_size': bead_size_value,
+                'subject_width': subject_size.get('width', 0) if subject_size else 0,
+                'subject_height': subject_size.get('height', 0) if subject_size else 0,
+                'subject_width_mm': subject_size.get('width_mm', 0.0) if subject_size else 0.0,
+                'subject_height_mm': subject_size.get('height_mm', 0.0) if subject_size else 0.0
+            }
+
+            self._set_progress(100, "完成 / Complete", "处理完成！")
+            self.start_btn.setEnabled(True)
+            self.stop_btn.setEnabled(False)
+
+            self.process_completed.emit({
+                'pattern_data': result_data,
+                'pattern_image_with_labels': str(viz_path_with),
+                'pattern_image_no_labels': str(viz_path_no),
+                'bead_pattern': bead_pattern,
+                'color_counts': color_counts,
+                'color_details': color_details
+            })
+        except Exception as exc:
+            self.log_message(f"处理失败 / Failed: {exc}")
+            self.start_btn.setEnabled(True)
+            self.stop_btn.setEnabled(False)
+
+    def _set_progress(self, value: int, step_text: str, log_message: str) -> None:
+        """更新进度和日志"""
+        self.progress_bar.setValue(value)
+        self.step_label.setText(step_text)
+        self.log_message(log_message)
+        QApplication.instance().processEvents()
+
+    def _get_output_dir(self) -> Path:
+        """获取输出目录"""
+        base_dir = Path(__file__).resolve().parents[3]
+        output_dir = base_dir / 'data' / 'output'
+        output_dir.mkdir(parents=True, exist_ok=True)
+        return output_dir
 
     def log_message(self, message: str):
         """记录日志"""

@@ -1,7 +1,7 @@
 {
-  "language": "zh_CN",
+  "language": "en_US",
   "theme": "light_blue",
-  "nano_banana_api_key": "",
+  "nano_banana_api_key": "sk-c0cac67fe0b14de598c237911354770d",
   "nano_banana_base_url": "https://api.grsai.com",
   "nano_banana_proxy": "",
   "auto_check_updates": true,
@@ -13,12 +13,33 @@
   "default_target_colors": 20,
   "remember_last_params": true,
   "window_geometry": {
-    "x": 154,
-    "y": 30,
+    "x": 120,
+    "y": 77,
     "width": 1400,
     "height": 900,
     "maximized": false
   },
   "nano_banana_model": "nano-banana-fast",
-  "nano_banana_image_size": "1K"
+  "nano_banana_image_size": "1K",
+  "output_dir": "./output",
+  "image_format": "PNG",
+  "print_dpi": 300,
+  "auto_save_project": true,
+  "show_color_numbers": false,
+  "last_params": {
+    "bead_size": "2.6mm",
+    "max_dimension": 180,
+    "preset": "standard",
+    "target_colors": 40,
+    "denoise_strength": 0.09999999999999998,
+    "contrast": 0.9999999999999999,
+    "sharpness": 1.0,
+    "use_ai": false,
+    "ai_prompt": "pixel art style",
+    "ai_size": 512,
+    "detect_subject": true,
+    "use_custom_palette": false,
+    "brand": "Mard",
+    "series": "144"
+  }
 }

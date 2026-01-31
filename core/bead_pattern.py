@@ -3,10 +3,11 @@
 负责生成拼豆图案数据结构、标记色号和导出功能
 """
 import numpy as np
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict, Tuple, Optional, Any
 import json
 from PIL import Image, ImageDraw, ImageFont
 import os
+import re
 
 
 class BeadPattern:
@@ -327,61 +328,85 @@ class BeadPattern:
                         writer.writerow([y, x, None, '', '', ''])
     
     def to_image(self, cell_size: int = 20, show_labels: bool = True,
-                 show_grid: bool = True, grid_color: Tuple[int, int, int] = (200, 200, 200)) -> Image.Image:
+                 show_grid: bool = True, grid_color: Tuple[int, int, int] = (200, 200, 200),
+                 show_legend: bool = False) -> Image.Image:
         """
         生成可视化图像
-        
+
         Args:
             cell_size: 每个拼豆的像素大小
             show_labels: 是否显示色号标签（默认True，显示编号）
             show_grid: 是否显示网格线
             grid_color: 网格线颜色
-            
+            show_legend: 是否在右侧显示颜色统计信息
+
         Returns:
             PIL Image对象
         """
         img_width = self.width * cell_size
         img_height = self.height * cell_size
-        
-        image = Image.new('RGB', (img_width, img_height), (255, 255, 255))
+
+        stats = self.get_color_statistics()
+        color_counts = stats['color_counts']
+        color_details = stats['color_details']
+
+        legend_width = 0
+        if show_legend and color_counts:
+            item_width = 30 + 50 + 100 + 50 + 30
+            legend_width = 20 + item_width
+
+        total_width = img_width + legend_width
+        image = Image.new('RGB', (total_width, img_height), (255, 255, 255))
         draw = ImageDraw.Draw(image)
         
         # 尝试加载默认字体，如果失败则使用默认字体
         # 基础字体大小根据cell_size调整
         if cell_size <= 15:
-            base_font_size = max(6, cell_size // 3)
+            base_font_size = max(7, int(cell_size * 0.6))
         elif cell_size <= 30:
-            base_font_size = max(8, cell_size // 2)
+            base_font_size = max(9, int(cell_size * 0.6))
         else:
-            base_font_size = max(12, cell_size // 2)
+            base_font_size = max(12, int(cell_size * 0.5))
         
-        font_cache: Dict[int, ImageFont.ImageFont] = {}
-        text_layout_cache: Dict[str, Tuple[ImageFont.ImageFont, int, int]] = {}
+        font_cache: Dict[int, Any] = {}
+        text_layout_cache: Dict[str, Tuple[Any, float, float]] = {}
         display_code_cache: Dict[str, str] = {}
 
         def get_font(size):
-            """获取指定大小的字体"""
+            """获取指定大小的字体 - 使用粗体以提高清晰度"""
             cached = font_cache.get(size)
             if cached is not None:
                 return cached
             try:
+                # 优先使用粗体字体，提高清晰度
                 try:
-                    font = ImageFont.truetype("arial.ttf", size)
+                    font = ImageFont.truetype("arialbd.ttf", size)
                 except:
                     try:
-                        font = ImageFont.truetype("/System/Library/Fonts/Arial.ttf", size)
+                        font = ImageFont.truetype("/System/Library/Fonts/Arial Bold.ttf", size)
                     except:
                         try:
-                            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", size)
+                            font = ImageFont.truetype("arial.ttf", size)
                         except:
-                            font = ImageFont.load_default()
+                            try:
+                                font = ImageFont.truetype("/System/Library/Fonts/Arial.ttf", size)
+                            except:
+                                try:
+                                    font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", size)
+                                except:
+                                    try:
+                                        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", size)
+                                    except:
+                                        font = ImageFont.load_default()
             except:
                 font = ImageFont.load_default()
             font_cache[size] = font
             return font
         
         base_font = get_font(base_font_size)
-        stroke_width = max(1, cell_size // 30)
+        if hasattr(draw, "fontmode"):
+            draw.fontmode = "1" if base_font_size <= 10 else "L"
+        stroke_width = max(1, cell_size // 15)
         stroke_offsets = [
             (adj_x, adj_y)
             for adj_x in range(-stroke_width, stroke_width + 1)
@@ -389,6 +414,17 @@ class BeadPattern:
             if adj_x != 0 or adj_y != 0
         ]
         
+        def normalize_code_label(label: str) -> str:
+            """规范化编号显示（去除前导0）"""
+            match = re.match(r"^([A-Za-z]+)(\d+)$", label)
+            if match:
+                prefix, digits = match.groups()
+                return f"{prefix}{int(digits)}"
+            match = re.match(r"^(\d+)$", label)
+            if match:
+                return str(int(match.group(1)))
+            return label
+
         # 绘制拼豆
         for y in range(self.height):
             for x in range(self.width):
@@ -428,6 +464,7 @@ class BeadPattern:
                                 else:
                                     # 如果没有分隔符，直接使用code（可能是自定义色号）
                                     display_code = code
+                                display_code = normalize_code_label(display_code)
                                 display_code_cache[code] = display_code
                             
                             # 使用基础字体计算文字位置（居中）
@@ -438,13 +475,12 @@ class BeadPattern:
                                 text_width = bbox[2] - bbox[0]
                                 text_height = bbox[3] - bbox[1]
                                 
-                                # 确保文字不超出格子，如果太宽则缩小字体
-                                if text_width > cell_size * 0.9:
-                                    # 如果文字太宽，缩小字体
-                                    text_scale = (cell_size * 0.9) / text_width
-                                    adjusted_font_size = int(base_font_size * text_scale)
-                                    if adjusted_font_size < 6:
-                                        adjusted_font_size = 6  # 最小字体大小
+                                # 确保文字不超出格子，宽高都需要适配
+                                if text_width > cell_size * 0.8 or text_height > cell_size * 0.8:
+                                    width_scale = (cell_size * 0.8) / text_width if text_width else 1.0
+                                    height_scale = (cell_size * 0.8) / text_height if text_height else 1.0
+                                    text_scale = min(width_scale, height_scale)
+                                    adjusted_font_size = max(6, int(base_font_size * text_scale))
                                     font = get_font(adjusted_font_size)
                                     # 重新计算
                                     bbox = draw.textbbox((0, 0), display_code, font=font)
@@ -484,24 +520,73 @@ class BeadPattern:
             for x in range(self.width + 1):
                 x_pos = x * cell_size
                 draw.line([(x_pos, 0), (x_pos, img_height)], fill=grid_color, width=1)
-            
+
             for y in range(self.height + 1):
                 y_pos = y * cell_size
                 draw.line([(0, y_pos), (img_width, y_pos)], fill=grid_color, width=1)
-        
+
+        if show_legend and color_counts:
+            legend_x = img_width + 20
+            legend_y = 20
+
+            try:
+                title_font = ImageFont.truetype("arialbd.ttf", 16)
+                item_font = ImageFont.truetype("arial.ttf", 12)
+            except:
+                try:
+                    title_font = ImageFont.truetype("/System/Library/Fonts/Arial Bold.ttf", 16)
+                    item_font = ImageFont.truetype("/System/Library/Fonts/Arial.ttf", 12)
+                except:
+                    title_font = ImageFont.load_default()
+                    item_font = ImageFont.load_default()
+
+            draw.text((legend_x, legend_y), "颜色统计", fill=(0, 0, 0), font=title_font)
+            legend_y += 30
+
+            sorted_colors = sorted(color_counts.items(), key=lambda x: x[1], reverse=True)
+
+            for color_id, count in sorted_colors:
+                color_detail = color_details.get(color_id, {})
+                rgb = color_detail.get('rgb', [255, 255, 255])
+                code = color_detail.get('code', '')
+                name_zh = color_detail.get('name_zh', color_detail.get('name_en', ''))
+
+                if code:
+                    parts = code.split('-')
+                    if len(parts) > 1:
+                        display_code = parts[-1]
+                    else:
+                        display_code = code
+                else:
+                    display_code = ''
+
+                color_box = [legend_x, legend_y, legend_x + 30, legend_y + 30]
+                draw.rectangle(color_box, fill=tuple(rgb), outline=(200, 200, 200), width=1)
+
+                draw.text((legend_x + 35, legend_y + 8), display_code, fill=(0, 0, 0), font=item_font)
+
+                name_x = legend_x + 90
+                if name_zh:
+                    draw.text((name_x, legend_y + 8), name_zh, fill=(0, 0, 0), font=item_font)
+
+                count_text = f"×{count}"
+                draw.text((legend_x + 200, legend_y + 8), count_text, fill=(0, 0, 0), font=item_font)
+
+                legend_y += 40
+
         return image
     
-    def save_image(self, file_path: str, cell_size: int = 20, 
-                   show_labels: bool = False, show_grid: bool = True) -> None:
+    def save_image(self, file_path: str, cell_size: int = 20,
+                   show_labels: bool = False, show_grid: bool = True, show_legend: bool = False) -> None:
         """
         保存可视化图像
-        
+
         Args:
             file_path: 输出文件路径
             cell_size: 每个拼豆的像素大小
             show_labels: 是否显示色号标签
             show_grid: 是否显示网格线
+            show_legend: 是否在右侧显示颜色统计信息
         """
-        image = self.to_image(cell_size, show_labels, show_grid)
+        image = self.to_image(cell_size, show_labels, show_grid, show_legend=show_legend)
         image.save(file_path)
-

@@ -79,6 +79,9 @@ class MainWindow(QMainWindow):
         self.result_page.export_requested.connect(self.on_export_requested)
         self.history_page.history_selected.connect(self.on_history_selected)
 
+        if hasattr(self.parameter_page, '_load_last_params'):
+            self.parameter_page._load_last_params()
+
         # 添加到堆栈
         self.content_stack.addWidget(self.upload_page)
         self.content_stack.addWidget(self.parameter_page)
@@ -112,29 +115,93 @@ class MainWindow(QMainWindow):
         """图片加载事件"""
         self.current_file = image_path
         self.process_results['image_info'] = image_info
-        print(f"Image loaded: {image_path}")
+        if hasattr(self.process_page, 'set_input_image'):
+            self.process_page.set_input_image(image_path)
 
     def on_params_changed(self, params: dict):
         """参数变更事件"""
         self.process_results['params'] = params
-        print(f"Params changed: {params}")
+        if self.config.get('remember_last_params', True):
+            self.config.save_last_params(params)
+        if hasattr(self.process_page, 'set_params'):
+            self.process_page.set_params(params)
 
     def on_process_completed(self, results: dict):
         """处理完成事件"""
         self.process_results.update(results)
+        params = self.process_results.get('params', {})
+        if params and self.config.get('remember_last_params', True):
+            self.config.save_last_params(params)
+
+        image_info = self.process_results.get('image_info', {})
+        params = self.process_results.get('params', {})
+        result_data = results.get('pattern_data') if isinstance(results, dict) else None
+
+        if not result_data:
+            width = image_info.get('width', 0)
+            height = image_info.get('height', 0)
+            color_count = params.get('target_colors', 0)
+            result_data = {
+                'width': width,
+                'height': height,
+                'color_count': color_count,
+                'total_beads': width * height if width and height else 0,
+                'bead_size': params.get('bead_size', '5.0mm')
+            }
+
+        image_path_no_labels = results.get('pattern_image_no_labels') if isinstance(results, dict) else None
+        image_path_with_labels = results.get('pattern_image_with_labels') if isinstance(results, dict) else None
+        if not image_path_no_labels:
+            image_path_no_labels = results.get('pattern_image') if isinstance(results, dict) else None
+        if not image_path_no_labels:
+            image_path_no_labels = self.current_file
+
+        if hasattr(self.result_page, 'set_pattern_images'):
+            self.result_page.set_pattern_images(image_path_no_labels, image_path_with_labels)
+            self.result_page.set_pattern_data(result_data)
+            if 'bead_pattern' in results and hasattr(self.result_page, 'set_pattern_object'):
+                self.result_page.set_pattern_object(results.get('bead_pattern'))
+            if 'color_counts' in results and 'color_details' in results and hasattr(self.result_page, 'set_color_statistics'):
+                total_beads = result_data.get('total_beads', 0)
+                self.result_page.set_color_statistics(
+                    results.get('color_counts', {}),
+                    results.get('color_details', {}),
+                    total_beads
+                )
+        else:
+            self.result_page.set_pattern_data(result_data, image_path_no_labels)
+
+        if image_info:
+            filename = image_info.get('filename', os.path.basename(self.current_file or ''))
+            self.history_page.add_record(
+                filename=filename,
+                path=image_path_no_labels or self.current_file or '',
+                width=result_data.get('width', 0),
+                height=result_data.get('height', 0),
+                color_count=result_data.get('color_count', 0),
+                params=params
+            )
+
         # 切换到结果页面
         self.on_page_changed('result')
 
     def on_export_requested(self, export_info: tuple):
         """导出请求事件"""
         format_type, file_path = export_info
-        print(f"Export requested: {format_type} to {file_path}")
-        # TODO: 实际导出逻辑
+        if not file_path:
+            return
+        export_dir = os.path.dirname(file_path)
+        if export_dir:
+            os.makedirs(export_dir, exist_ok=True)
+        if hasattr(self.result_page, '_start_export'):
+            self.result_page._start_export(format_type, file_path)
 
-    def on_history_selected(self, path: str):
+    def on_history_selected(self, path: str, params: dict = None):
         """历史记录选中事件"""
-        print(f"History selected: {path}")
-        # TODO: 加载历史项目
+        if params and hasattr(self.parameter_page, 'set_params'):
+            self.parameter_page.set_params(params)
+            self.on_params_changed(params)
+        # TODO: 加载历史项目图像
 
     def setup_menu_bar(self):
         """设置菜单栏"""

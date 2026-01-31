@@ -4,6 +4,7 @@
 import json
 from pathlib import Path
 from PyQt6.QtWidgets import QApplication
+from PyQt6.QtGui import QPalette, QColor
 
 
 class ThemeManager:
@@ -49,7 +50,18 @@ class ThemeManager:
             with open(qss_path, 'r', encoding='utf-8') as f:
                 qss = f.read()
 
-            QApplication.instance().setStyleSheet(qss)
+            app = QApplication.instance()
+            app.setStyleSheet(qss)
+
+            # Set the palette colors explicitly to keep text from turning white on some systems.
+            palette = app.palette()
+            palette.setColor(QPalette.ColorRole.WindowText, QColor("#2C3E50"))
+            palette.setColor(QPalette.ColorRole.Text, QColor("#2C3E50"))
+            palette.setColor(QPalette.ColorRole.Button, QColor("#E8F2FF"))
+            palette.setColor(QPalette.ColorRole.ButtonText, QColor("#2C3E50"))
+            palette.setColor(QPalette.ColorRole.Base, QColor("#FFFFFF"))
+            palette.setColor(QPalette.ColorRole.AlternateBase, QColor("#F5F9FF"))
+            app.setPalette(palette)
 
     def get_color(self, name):
         """获取颜色值"""

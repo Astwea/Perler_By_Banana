@@ -119,18 +119,32 @@ class PalettePage(QWidget):
         self.color_table.setRowCount(len(self.colors))
 
         for row, color in enumerate(self.colors):
+            rgb = color.get('rgb')
+            if isinstance(rgb, (list, tuple)) and len(rgb) >= 3:
+                r, g, b = rgb[:3]
+            else:
+                r = color.get('R', 0)
+                g = color.get('G', 0)
+                b = color.get('B', 0)
+            try:
+                r = int(r)
+                g = int(g)
+                b = int(b)
+            except (TypeError, ValueError):
+                r, g, b = 0, 0, 0
+
             # 预览颜色
             preview_item = QTableWidgetItem()
-            preview_item.setBackground(QColor(color.get('R', 0), color.get('G', 0), color.get('B', 0)))
+            preview_item.setBackground(QColor(r, g, b))
             preview_item.setFlags(preview_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             self.color_table.setItem(row, 0, preview_item)
 
             # 其他列
             self.color_table.setItem(row, 1, QTableWidgetItem(str(color.get('id', ''))))
-            self.color_table.setItem(row, 2, QTableWidgetItem(color.get('chinese_name', '')))
-            self.color_table.setItem(row, 3, QTableWidgetItem(color.get('english_name', '')))
+            self.color_table.setItem(row, 2, QTableWidgetItem(color.get('chinese_name') or color.get('name_zh', '')))
+            self.color_table.setItem(row, 3, QTableWidgetItem(color.get('english_name') or color.get('name_en', '')))
             self.color_table.setItem(row, 4, QTableWidgetItem(color.get('code', '')))
-            self.color_table.setItem(row, 5, QTableWidgetItem(f"RGB({color.get('R', 0)}, {color.get('G', 0)}, {color.get('B', 0)})"))
+            self.color_table.setItem(row, 5, QTableWidgetItem(f"RGB({r}, {g}, {b})"))
             self.color_table.setItem(row, 6, QTableWidgetItem(color.get('category', '')))
 
     def on_add_color(self):

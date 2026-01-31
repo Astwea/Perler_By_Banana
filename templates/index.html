@@ -29,7 +29,7 @@
                     <div class="control-group" style="grid-column: 1 / -1;">
                         <label>代理地址（可选，如果需要）</label>
                         <input type="text" id="nanoBananaProxy" placeholder="http://127.0.0.1:7890 或留空使用系统代理" style="width: 100%;">
-                        <p style="font-size: 0.8em; color: #666; margin-top: 5px;">
+                        <p style="font-size: 0.8em; color: #4a5568; margin-top: 5px;">
                             格式：http://host:port 或 https://host:port（例如：http://127.0.0.1:7890）
                         </p>
                     </div>
@@ -37,7 +37,7 @@
                 <div class="button-group">
                     <button class="btn btn-secondary" id="saveNanoBananaConfig">保存配置</button>
                 </div>
-                <p style="margin-top: 10px; color: #666; font-size: 0.9em;">
+                <p style="margin-top: 10px; color: #4a5568; font-size: 0.9em;">
                     提示：首次使用需要配置API密钥和基础URL。配置保存后会在当前会话中生效。
                 </p>
             </div>
@@ -53,7 +53,7 @@
                         <option value="">全部品牌</option>
                         <option value="自定义">自定义色板</option>
                     </select>
-                    <p style="font-size: 0.8em; color: #666; margin-top: 5px;">
+                    <p style="font-size: 0.8em; color: #4a5568; margin-top: 5px;">
                         选择拼豆品牌，将只使用该品牌的颜色进行匹配
                     </p>
                 </div>
@@ -62,13 +62,13 @@
                     <select id="colorSeries" style="width: 100%;" disabled>
                         <option value="">请先选择品牌</option>
                     </select>
-                    <p style="font-size: 0.8em; color: #666; margin-top: 5px;">
+                    <p style="font-size: 0.8em; color: #4a5568; margin-top: 5px;">
                         选择该品牌的色数系列（如291色、120色等）
                     </p>
                 </div>
             </div>
             <div id="colorPaletteInfo" style="margin-top: 10px; padding: 10px; background: #f5f5f5; border-radius: 5px; display: none;">
-                <p style="margin: 0; color: #666; font-size: 0.9em;">
+                <p style="margin: 0; color: #4a5568; font-size: 0.9em;">
                     <span id="selectedColorCount">0</span> 种颜色可用
                 </p>
             </div>
@@ -77,7 +77,8 @@
         <div class="section">
             <h2>1. 上传图片</h2>
             <div class="upload-area" id="uploadArea">
-                <p>点击或拖拽图片到此处上传</p>
+                <p>📁 点击或拖拽图片到此处上传</p>
+                <p class="supported-formats">支持格式: PNG, JPG, JPEG, GIF, BMP, WebP</p>
                 <input type="file" id="fileInput" accept="image/*" style="display: none;">
             </div>
             <div class="button-group" id="autoExecuteGroup" style="margin-top: 15px; display: none;">
@@ -93,7 +94,7 @@
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
                         <span id="currentStepText" style="font-weight: 600; color: #333;">准备执行...</span>
                         <div style="display: flex; align-items: center; gap: 10px;">
-                            <span id="stepProgress" style="color: #666; font-size: 0.9em;">0/4</span>
+                            <span id="stepProgress" style="color: #4a5568; font-size: 0.9em;">0/4</span>
                             <button class="btn btn-danger" id="stopExecutionBtn" style="padding: 6px 15px; font-size: 14px; display: none;">
                                 ⏹️ 终止执行
                             </button>
@@ -118,7 +119,7 @@
                 <div class="control-group" style="grid-column: 1 / -1;">
                     <label>提示词</label>
                     <input type="text" id="nanoBananaPrompt" value="" style="width: 100%;">
-                    <p style="font-size: 0.8em; color: #666; margin-top: 5px;">
+                    <p style="font-size: 0.8em; color: #4a5568; margin-top: 5px;">
                         生成像素风格图片：约束像素大小、只保留角色、移除背景和文字、在合适尺寸内还原角色细节（根据上方"尺寸类型"选择自动更新）
                     </p>
                 </div>
@@ -151,7 +152,7 @@
                         <option value="xlarge">超大尺寸（巨型拼豆）</option>
                         <option value="custom">自定义</option>
                     </select>
-                    <p style="font-size: 0.8em; color: #666; margin-top: 5px;">
+                    <p style="font-size: 0.8em; color: #4a5568; margin-top: 5px;">
                         选择尺寸类型会自动更新提示词中的尺寸描述
                     </p>
                 </div>
@@ -190,7 +191,7 @@
                         <option value="heavy">重度预处理（原始图片需要大量优化）</option>
                         <option value="custom">自定义（手动调整参数）</option>
                     </select>
-                    <p style="font-size: 0.8em; color: #666; margin-top: 5px;">
+                    <p style="font-size: 0.8em; color: #4a5568; margin-top: 5px;">
                         选择预设会自动调整下方参数，适合Nano Banana结果好的情况
                     </p>
                 </div>
@@ -200,7 +201,7 @@
                         <option value="2.6" selected>2.6mm（小拼豆）</option>
                         <option value="5.0">5.0mm（标准拼豆）</option>
                     </select>
-                    <p style="font-size: 0.8em; color: #666; margin-top: 5px;">
+                    <p style="font-size: 0.8em; color: #4a5568; margin-top: 5px;">
                         选择拼豆直径，会影响最大尺寸范围
                     </p>
                 </div>
@@ -209,7 +210,7 @@
                         <span class="range-value" id="maxDimensionValue">200</span>
                     </label>
                     <input type="range" id="maxDimension" min="20" max="400" value="200" step="5">
-                    <p style="font-size: 0.8em; color: #666; margin-top: 5px;">
+                    <p style="font-size: 0.8em; color: #4a5568; margin-top: 5px;">
                         限制图案的最大宽度或高度（按比例缩放），2.6mm拼豆建议200-400，5.0mm拼豆建议100-200
                     </p>
                 </div>
@@ -218,7 +219,7 @@
                         <span class="range-value" id="targetColorsValue">20</span>
                     </label>
                     <input type="range" id="targetColors" min="0" max="100" value="20" step="1">
-                    <p style="font-size: 0.8em; color: #666; margin-top: 5px;">
+                    <p style="font-size: 0.8em; color: #4a5568; margin-top: 5px;">
                         K-means聚类减少颜色数（值越大细节越多但更慢，Nano Banana结果好时可设更大，如40-80；勾选下方可跳过）
                     </p>
                 </div>
@@ -232,7 +233,7 @@
                         <span class="range-value" id="denoiseValue">0.5</span>
                     </label>
                     <input type="range" id="denoiseStrength" min="0" max="1" value="0.5" step="0.1">
-                    <p style="font-size: 0.8em; color: #666; margin-top: 5px;">
+                    <p style="font-size: 0.8em; color: #4a5568; margin-top: 5px;">
                         0=不降噪，1=最强降噪（Nano Banana结果好时可设为0.1-0.3）
                     </p>
                 </div>
@@ -241,7 +242,7 @@
                         <span class="range-value" id="contrastValue">1.2</span>
                     </label>
                     <input type="range" id="contrastFactor" min="0.5" max="2" value="1.2" step="0.1">
-                    <p style="font-size: 0.8em; color: #666; margin-top: 5px;">
+                    <p style="font-size: 0.8em; color: #4a5568; margin-top: 5px;">
                         1.0=不变，>1.0增强，<1.0降低（Nano Banana结果好时可设为1.0-1.1）
                     </p>
                 </div>
@@ -250,7 +251,7 @@
                         <span class="range-value" id="sharpnessValue">1.1</span>
                     </label>
                     <input type="range" id="sharpnessFactor" min="0.5" max="2" value="1.1" step="0.1">
-                    <p style="font-size: 0.8em; color: #666; margin-top: 5px;">
+                    <p style="font-size: 0.8em; color: #4a5568; margin-top: 5px;">
                         1.0=不变，>1.0增强，<1.0降低（Nano Banana结果好时可设为1.0）
                     </p>
                 </div>
@@ -285,7 +286,7 @@
                         <option value="dither_fs">抖动（Floyd-Steinberg）</option>
                         <option value="dither_atkinson">抖动（Atkinson）</option>
                     </select>
-                    <p style="font-size: 0.8em; color: #666; margin-top: 5px;">
+                    <p style="font-size: 0.8em; color: #4a5568; margin-top: 5px;">
                         抖动模式会慢一些，但能保留更多发丝与阴影细节
                     </p>
                 </div>
@@ -318,7 +319,7 @@
                 <div class="control-group" style="grid-column: 1 / -1;">
                     <label>提示词</label>
                     <input type="text" id="renderPrompt" value="拼豆钥匙扣实物效果图，真实的拼豆工艺品，钥匙扣配件，近距离拍摄，高清晰度，专业产品摄影，自然光线，背景虚化，细节清晰" style="width: 100%;">
-                    <p style="font-size: 0.8em; color: #666; margin-top: 5px;">
+                    <p style="font-size: 0.8em; color: #4a5568; margin-top: 5px;">
                         提示词用于描述希望生成的效果图风格和特点，可选择预设风格或自定义
                     </p>
                 </div>
@@ -357,7 +358,7 @@
                 <div class="palette-info" style="padding: 10px; background: #f5f5f5; border-radius: 5px; margin-bottom: 15px;">
                     <p style="margin: 5px 0;"><strong>标准色板:</strong> <span id="standardColorCount">加载中...</span> 种颜色</p>
                     <p style="margin: 5px 0;"><strong>自定义色板:</strong> <span id="customColorCount">加载中...</span> 种颜色</p>
-                    <p style="margin: 5px 0; color: #666; font-size: 0.9em;">※ 自定义色板只显示您手动添加的颜色，标准色板包含所有品牌颜色</p>
+                    <p style="margin: 5px 0; color: #4a5568; font-size: 0.9em;">※ 自定义色板只显示您手动添加的颜色，标准色板包含所有品牌颜色</p>
                 </div>
                 <div class="add-color-form" style="margin-bottom: 20px;">
                     <h3 style="margin-top: 0;">添加自定义颜色</h3>
@@ -396,7 +397,7 @@
                 <div id="customColorListSection" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd; display: none;">
                     <h3>我的自定义颜色</h3>
                     <div class="color-palette-grid" id="colorPaletteGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px; margin-top: 15px;">
-                        <p style="grid-column: 1 / -1; text-align: center; color: #666;">加载中...</p>
+                        <p style="grid-column: 1 / -1; text-align: center; color: #4a5568;">加载中...</p>
                     </div>
                 </div>
                 
@@ -414,7 +415,7 @@
                             <span style="font-size: 0.9em;">导入时替换现有颜色</span>
                         </label>
                     </div>
-                    <p style="font-size: 0.85em; color: #666; margin-top: 10px;">
+                    <p style="font-size: 0.85em; color: #4a5568; margin-top: 10px;">
                         <strong>CSV格式:</strong> ID,中文名称,英文名称,色号代码,R,G,B,分类<br>
                         <strong>JSON格式:</strong> 与系统内部格式相同，包含 colors 数组
                     </p>
@@ -430,6 +431,7 @@
                 <button class="btn btn-success" id="exportJsonBtn">导出JSON</button>
                 <button class="btn btn-success" id="exportCsvBtn">导出CSV</button>
                 <button class="btn btn-success" id="exportPngBtn">导出PNG</button>
+                <button class="btn btn-primary" id="exportTechnicalSheetBtn">导出工程图</button>
                 <button class="btn btn-secondary" id="printPreviewBtn">打印预览</button>
                 <button class="btn btn-secondary" id="printBtn">生成PDF</button>
             </div>

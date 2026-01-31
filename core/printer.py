@@ -131,8 +131,15 @@ class Printer:
             font_cache[size] = font
             return font
         
-        base_font_size = max(8, cell_size_px // 3)
+        if cell_size_px <= 15:
+            base_font_size = max(7, int(cell_size_px * 0.6))
+        elif cell_size_px <= 30:
+            base_font_size = max(9, int(cell_size_px * 0.6))
+        else:
+            base_font_size = max(12, int(cell_size_px * 0.5))
         base_font = get_font(base_font_size)
+        if hasattr(draw, "fontmode"):
+            draw.fontmode = "1" if base_font_size <= 10 else "L"
         stroke_width = max(1, cell_size_px // 30)
         stroke_offsets = [
             (adj_x, adj_y)
@@ -196,9 +203,11 @@ class Printer:
                                 text_width = bbox[2] - bbox[0]
                                 text_height = bbox[3] - bbox[1]
                                 
-                                # 确保文字不超出格子，如果太宽则缩小字体
-                                if text_width > cell_size_px * 0.9:
-                                    text_scale = (cell_size_px * 0.9) / text_width
+                                # 确保文字不超出格子，宽高都需要适配
+                                if text_width > cell_size_px * 0.8 or text_height > cell_size_px * 0.8:
+                                    width_scale = (cell_size_px * 0.8) / text_width if text_width else 1.0
+                                    height_scale = (cell_size_px * 0.8) / text_height if text_height else 1.0
+                                    text_scale = min(width_scale, height_scale)
                                     adjusted_font_size = max(6, int(base_font_size * text_scale))
                                     font = get_font(adjusted_font_size)
                                     # 重新计算
@@ -355,4 +364,3 @@ class Printer:
         print_image = self.generate_print_image(pattern, paper_size, margin_mm,
                                                show_grid, show_labels, dpi)
         print_image.save(output_path, dpi=(dpi, dpi))
-

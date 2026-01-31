@@ -48,18 +48,85 @@ h2 {
     padding: 40px;
     text-align: center;
     cursor: pointer;
-    transition: all 0.3s;
+    transition: all 0.3s ease;
     background: #f0f4ff;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 200px;
+    width: 100%;
+    box-sizing: border-box;
+    position: relative;
+}
+
+.upload-area p {
+    color: #2d3748;
+    font-size: 16px;
+    margin: 8px 0;
+    text-align: center;
+    width: 100%;
+}
+
+.upload-area img {
+    max-width: 100%;
+    max-height: 300px;
+    margin: 10px auto;
+    display: block;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    align-self: center;
+}
+
+.upload-area .upload-hint {
+    color: #4a5568;
+    font-size: 14px;
+    margin-top: 10px;
+}
+
+.upload-area .supported-formats {
+    color: #4a5568;
+    font-size: 13px;
+    margin-top: 8px;
+    font-weight: 500;
 }
 
 .upload-area:hover {
     background: #e0e8ff;
     border-color: #764ba2;
+    box-shadow: 0 4px 16px rgba(102, 126, 234, 0.2);
 }
 
+/* 拖拽状态 - 清晰的视觉反馈 */
 .upload-area.dragover {
-    background: #d0d8ff;
-    border-color: #764ba2;
+    background: linear-gradient(135deg, #e0e8ff 0%, #d0d8ff 100%);
+    border-color: #5a67d8;
+    border-style: solid;
+    border-width: 3px;
+    transform: scale(1.02);
+    box-shadow: 0 8px 24px rgba(102, 126, 234, 0.35);
+}
+
+.upload-area.dragover::before {
+    content: '松开鼠标上传图片';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 18px;
+    font-weight: 700;
+    color: #5a67d8;
+    background: rgba(255, 255, 255, 0.95);
+    padding: 12px 24px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 10;
+}
+
+.upload-area.dragover p {
+    color: #5a67d8;
+    font-weight: 600;
+    opacity: 0.6;
 }
 
 .upload-button {
@@ -726,4 +793,14 @@ h2 {
     }
 }
 
+.section p[style*="color: #666"],
+.controls p[style*="color: #666"],
+.step-section p[style*="color: #666"] {
+    color: #4a5568 !important;
+}
 
+.hint-text,
+.help-text {
+    color: #4a5568;
+    font-size: 0.85em;
+}

@@ -8,6 +8,10 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont
+import json
+import os
+
+from desktop.config import ConfigManager
 
 
 class ParameterPage(QWidget):
@@ -18,7 +22,10 @@ class ParameterPage(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.params = self._get_default_params()
+        self.brand_series_map = {}
+        self.config = ConfigManager()
         self.init_ui()
+        self._load_brand_series()
 
     def _get_default_params(self):
         """获取默认参数"""
@@ -41,7 +48,9 @@ class ParameterPage(QWidget):
 
             # 其他
             'detect_subject': True,  # 检测主体
-            'use_custom_palette': False  # 使用自定义色板
+            'use_custom_palette': False,  # 使用自定义色板
+            'brand': '',  # 拼豆品牌
+            'series': ''  # 色数系列
         }
 
     def init_ui(self):
@@ -120,7 +129,7 @@ class ParameterPage(QWidget):
 
         # 拼豆大小
         bead_layout = QHBoxLayout()
-        bead_label = QLabel("拼豆大小 / Bead Size:")
+        bead_label = QLabel("拼豆种类 / Bead Type:")
         bead_label.setMinimumWidth(150)
         self.bead_size_combo = QComboBox()
         self.bead_size_combo.addItems(["2.6mm (小拼豆 / Small)", "5.0mm (标准拼豆 / Standard)"])
@@ -129,6 +138,28 @@ class ParameterPage(QWidget):
         bead_layout.addWidget(bead_label)
         bead_layout.addWidget(self.bead_size_combo, 1)
         layout.addLayout(bead_layout)
+
+        # 拼豆品牌
+        brand_layout = QHBoxLayout()
+        brand_label = QLabel("拼豆厂家 / Brand:")
+        brand_label.setMinimumWidth(150)
+        self.brand_combo = QComboBox()
+        self.brand_combo.addItem("全部品牌 / All Brands", "")
+        self.brand_combo.currentIndexChanged.connect(self._on_brand_changed)
+        brand_layout.addWidget(brand_label)
+        brand_layout.addWidget(self.brand_combo, 1)
+        layout.addLayout(brand_layout)
+
+        # 色数系列
+        series_layout = QHBoxLayout()
+        series_label = QLabel("色数系列 / Series:")
+        series_label.setMinimumWidth(150)
+        self.series_combo = QComboBox()
+        self.series_combo.addItem("全部色数 / All Series", "")
+        self.series_combo.setEnabled(False)
+        series_layout.addWidget(series_label)
+        series_layout.addWidget(self.series_combo, 1)
+        layout.addLayout(series_layout)
 
         # 最大尺寸
         dimension_layout = QHBoxLayout()
@@ -180,7 +211,7 @@ class ParameterPage(QWidget):
 
         # 目标颜色数
         colors_layout = QHBoxLayout()
-        colors_label = QLabel("目标颜色数 / Target Colors:")
+        colors_label = QLabel("拼豆颜色数量 / Bead Colors:")
         colors_label.setMinimumWidth(150)
         self.target_colors_spin = QSpinBox()
         self.target_colors_spin.setMinimum(5)
@@ -230,6 +261,81 @@ class ParameterPage(QWidget):
         layout.addLayout(sharpness_layout)
 
         return group
+
+    def _load_brand_series(self) -> None:
+        """加载品牌与色数系列"""
+        colors_path = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)),
+            '..',
+            '..',
+            'data',
+            'standard_colors.json'
+        )
+
+        if not os.path.exists(colors_path):
+            return
+
+        try:
+            with open(colors_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except Exception:
+            return
+
+        colors = data.get('colors', [])
+        brand_series_map = {}
+
+        for color in colors:
+            brand = color.get('brand')
+            series = color.get('series')
+            if not brand:
+                continue
+            if brand not in brand_series_map:
+                brand_series_map[brand] = set()
+            if series:
+                brand_series_map[brand].add(str(series))
+
+        self.brand_series_map = brand_series_map
+        self._populate_brands()
+
+    def _populate_brands(self) -> None:
+        """填充品牌下拉框"""
+        if not hasattr(self, 'brand_combo'):
+            return
+        current = self.brand_combo.currentData()
+        self.brand_combo.blockSignals(True)
+        self.brand_combo.clear()
+        self.brand_combo.addItem("全部品牌 / All Brands", "")
+        for brand in sorted(self.brand_series_map.keys()):
+            self.brand_combo.addItem(brand, brand)
+        if current:
+            index = self.brand_combo.findData(current)
+            if index >= 0:
+                self.brand_combo.setCurrentIndex(index)
+        self.brand_combo.blockSignals(False)
+        self._on_brand_changed(self.brand_combo.currentIndex())
+
+    def _on_brand_changed(self, index: int) -> None:
+        """品牌变更事件"""
+        if not hasattr(self, 'series_combo'):
+            return
+        brand = self.brand_combo.itemData(index)
+        self.series_combo.blockSignals(True)
+        self.series_combo.clear()
+        self.series_combo.addItem("全部色数 / All Series", "")
+
+        if not brand:
+            self.series_combo.setEnabled(False)
+            self.series_combo.blockSignals(False)
+            return
+
+        series_list = sorted(
+            self.brand_series_map.get(brand, []),
+            key=lambda s: int(s) if str(s).isdigit() else str(s)
+        )
+        for series in series_list:
+            self.series_combo.addItem(f"{series} 色", series)
+        self.series_combo.setEnabled(True)
+        self.series_combo.blockSignals(False)
 
     def _create_ai_settings_group(self) -> QGroupBox:
         """创建AI增强设置分组"""
@@ -325,6 +431,10 @@ class ParameterPage(QWidget):
         """重置按钮点击事件"""
         # 重置为默认值
         self.bead_size_combo.setCurrentIndex(1)  # 5.0mm
+        if hasattr(self, 'brand_combo'):
+            self.brand_combo.setCurrentIndex(0)
+        if hasattr(self, 'series_combo'):
+            self.series_combo.setCurrentIndex(0)
         self.max_dimension_spin.setValue(100)
         self.preset_combo.setCurrentIndex(1)  # 标准
         self.target_colors_spin.setValue(20)
@@ -338,6 +448,8 @@ class ParameterPage(QWidget):
     def on_apply_clicked(self):
         """应用按钮点击事件"""
         self._collect_params()
+        if self.config.get('remember_last_params', True):
+            self.config.save_last_params(self.params)
         self.params_changed.emit(self.params)
 
     def _collect_params(self):
@@ -352,7 +464,9 @@ class ParameterPage(QWidget):
             'sharpness': self.sharpness_spin.value(),
             'use_ai': self.use_ai_checkbox.isChecked(),
             'detect_subject': self.detect_subject_checkbox.isChecked(),
-            'use_custom_palette': self.use_custom_palette_checkbox.isChecked()
+            'use_custom_palette': self.use_custom_palette_checkbox.isChecked(),
+            'brand': self.brand_combo.currentData() if hasattr(self, 'brand_combo') else '',
+            'series': self.series_combo.currentData() if hasattr(self, 'series_combo') else ''
         })
 
     def get_params(self) -> dict:
@@ -364,6 +478,14 @@ class ParameterPage(QWidget):
         """设置参数"""
         if 'bead_size' in params:
             self.bead_size_combo.setCurrentIndex(0 if params['bead_size'] == '2.6mm' else 1)
+        if 'brand' in params and hasattr(self, 'brand_combo'):
+            brand_index = self.brand_combo.findData(params['brand'])
+            if brand_index >= 0:
+                self.brand_combo.setCurrentIndex(brand_index)
+        if 'series' in params and hasattr(self, 'series_combo'):
+            series_index = self.series_combo.findData(params['series'])
+            if series_index >= 0:
+                self.series_combo.setCurrentIndex(series_index)
         if 'max_dimension' in params:
             self.max_dimension_spin.setValue(params['max_dimension'])
         if 'preset' in params:
@@ -383,3 +505,12 @@ class ParameterPage(QWidget):
             self.detect_subject_checkbox.setChecked(params['detect_subject'])
         if 'use_custom_palette' in params:
             self.use_custom_palette_checkbox.setChecked(params['use_custom_palette'])
+        self.params.update(params)
+    def _load_last_params(self):
+        """从配置加载上次使用的参数"""
+        if self.config.get('remember_last_params', True):
+            last_params = self.config.get_last_params()
+            if last_params:
+                self.set_params(last_params)
+                self.params_changed.emit(self.params)
+  

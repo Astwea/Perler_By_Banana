@@ -86,17 +86,17 @@ class Sidebar(QWidget):
                 border: none;
                 border-radius: 10px;
                 font-size: 14px;
-                color: #7F8C8D;
+                color: #5A6C7D !important;
                 background: transparent;
                 font-weight: 500;
             }
             QPushButton:hover {
                 background: #E8F2FF;
-                color: #4A90E2;
+                color: #2E5C8A !important;
             }
             QPushButton:checked {
-                background: linear-gradient(135deg, #4A90E2, #7DB3F0);
-                color: white;
+                background: linear-gradient(135deg, #E8F2FF, #D0E4FF);
+                color: #2C3E50 !important;
                 font-weight: bold;
             }
         """)

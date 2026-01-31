@@ -10,13 +10,17 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont
 import os
 
+from desktop.config import ConfigManager
+
 
 class SettingsPage(QWidget):
     """系统设置页面"""
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.config = ConfigManager()
         self.init_ui()
+        self._load_settings()
 
     def init_ui(self):
         """初始化UI"""
@@ -80,6 +84,7 @@ class SettingsPage(QWidget):
         self.api_key_input = QLineEdit()
         self.api_key_input.setPlaceholderText("请输入API密钥 / Enter API key")
         self.api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.api_key_input.setMinimumHeight(36)
         key_layout.addWidget(key_label)
         key_layout.addWidget(self.api_key_input, 1)
         api_layout.addLayout(key_layout)
@@ -91,6 +96,7 @@ class SettingsPage(QWidget):
         self.base_url_input = QLineEdit()
         self.base_url_input.setPlaceholderText("https://api.grsai.com")
         self.base_url_input.setText("https://api.grsai.com")
+        self.base_url_input.setMinimumHeight(36)
         url_layout.addWidget(url_label)
         url_layout.addWidget(self.base_url_input, 1)
         api_layout.addLayout(url_layout)
@@ -101,6 +107,7 @@ class SettingsPage(QWidget):
         proxy_label.setMinimumWidth(150)
         self.proxy_input = QLineEdit()
         self.proxy_input.setPlaceholderText("http://host:port (可选 / optional)")
+        self.proxy_input.setMinimumHeight(36)
         proxy_layout.addWidget(proxy_label)
         proxy_layout.addWidget(self.proxy_input, 1)
         api_layout.addLayout(proxy_layout)
@@ -110,6 +117,8 @@ class SettingsPage(QWidget):
         test_btn_layout.addStretch()
         self.test_api_btn = QPushButton("🔍 测试连接 / Test Connection")
         self.test_api_btn.setProperty("class", "secondary")
+        self.test_api_btn.setMinimumWidth(180)
+        self.test_api_btn.setMinimumHeight(40)
         self.test_api_btn.clicked.connect(self.on_test_api)
         test_btn_layout.addWidget(self.test_api_btn)
         api_layout.addLayout(test_btn_layout)
@@ -140,10 +149,13 @@ class SettingsPage(QWidget):
         self.output_dir_input.setPlaceholderText("默认: ./output")
         self.output_dir_input.setText("./output")
         self.output_dir_input.setReadOnly(True)
+        self.output_dir_input.setMinimumHeight(36)
         output_layout.addWidget(output_label)
         output_layout.addWidget(self.output_dir_input, 1)
 
         browse_btn = QPushButton("📁 浏览 / Browse")
+        browse_btn.setMinimumWidth(100)
+        browse_btn.setMinimumHeight(40)
         browse_btn.clicked.connect(self.on_browse_output)
         output_layout.addWidget(browse_btn)
 
@@ -207,11 +219,15 @@ class SettingsPage(QWidget):
 
         reset_btn = QPushButton("🔄 重置默认 / Reset to Default")
         reset_btn.setProperty("class", "secondary")
+        reset_btn.setMinimumWidth(180)
+        reset_btn.setMinimumHeight(40)
         reset_btn.clicked.connect(self.on_reset)
         btn_layout.addWidget(reset_btn)
 
         save_btn = QPushButton("💾 保存设置 / Save Settings")
         save_btn.setProperty("class", "success")
+        save_btn.setMinimumWidth(180)
+        save_btn.setMinimumHeight(40)
         save_btn.clicked.connect(self.on_save)
         btn_layout.addWidget(save_btn)
 
@@ -257,11 +273,23 @@ class SettingsPage(QWidget):
             self.dpi_spin.setValue(300)
             self.auto_save_checkbox.setChecked(True)
             self.show_numbers_checkbox.setChecked(False)
+            self.on_save()
             QMessageBox.information(self, "成功 / Success", "已重置为默认设置 / Settings reset to default")
 
     def on_save(self):
         """保存设置"""
-        # TODO: 实际保存设置到配置文件
+        settings = self.get_settings()
+        self.config.set_language(settings['language'])
+        self.config.set_nano_banana_config(
+            settings['api_key'],
+            settings['base_url'],
+            settings['proxy']
+        )
+        self.config.set('output_dir', settings['output_dir'])
+        self.config.set('image_format', settings['image_format'])
+        self.config.set('print_dpi', settings['dpi'])
+        self.config.set('auto_save_project', settings['auto_save'])
+        self.config.set('show_color_numbers', settings['show_numbers'])
         QMessageBox.information(self, "成功 / Success", "设置已保存 / Settings saved")
 
     def get_settings(self) -> dict:
@@ -300,3 +328,18 @@ class SettingsPage(QWidget):
             self.auto_save_checkbox.setChecked(settings['auto_save'])
         if 'show_numbers' in settings:
             self.show_numbers_checkbox.setChecked(settings['show_numbers'])
+
+    def _load_settings(self):
+        """从配置加载设置"""
+        settings = {
+            'language': self.config.get_language(),
+            'api_key': self.config.get('nano_banana_api_key', ''),
+            'base_url': self.config.get('nano_banana_base_url', 'https://api.grsai.com'),
+            'proxy': self.config.get('nano_banana_proxy', ''),
+            'output_dir': self.config.get('output_dir', './output'),
+            'image_format': self.config.get('image_format', 'PNG'),
+            'dpi': self.config.get('print_dpi', 300),
+            'auto_save': self.config.get('auto_save_project', True),
+            'show_numbers': self.config.get('show_color_numbers', False)
+        }
+        self.set_settings(settings)

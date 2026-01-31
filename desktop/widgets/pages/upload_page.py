@@ -7,8 +7,9 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QFileDialog, QGroupBox, QScrollArea
 )
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QPixmap, QImage, QFont
+from typing import Optional
+from PyQt6.QtCore import Qt, pyqtSignal, QUrl
+from PyQt6.QtGui import QPixmap, QImage, QFont, QDragEnterEvent, QDropEvent
 from PIL import Image as PILImage
 
 
@@ -22,6 +23,7 @@ class UploadPage(QWidget):
         self.current_image_path = None
         self.current_image = None
         self.image_info = {}
+        self.setAcceptDrops(True)
         self.init_ui()
 
     def init_ui(self):
@@ -31,9 +33,10 @@ class UploadPage(QWidget):
         layout.setSpacing(20)
 
         # 标题
-        title_label = QLabel("📁 上传图片 / Upload Image")
+        title_label = QLabel("上传图片 / Upload Image")
         title_label.setFont(QFont("Microsoft YaHei UI", 20, QFont.Weight.Bold))
         title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title_label.setStyleSheet("color: #2C3E50 !important;")
         layout.addWidget(title_label)
 
         # 说明文字
@@ -42,7 +45,7 @@ class UploadPage(QWidget):
             "Supported formats: PNG, JPG, JPEG, etc."
         )
         info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        info_label.setStyleSheet("color: #7F8C8D; font-size: 14px;")
+        info_label.setStyleSheet("color: #5A6C7D !important; font-size: 14px;")
         layout.addWidget(info_label)
 
         # 上传区域
@@ -67,13 +70,6 @@ class UploadPage(QWidget):
         upload_layout.setContentsMargins(30, 30, 30, 30)
         upload_layout.setSpacing(20)
 
-        # 上传按钮
-        self.upload_btn = QPushButton("📤 选择图片 / Choose Image")
-        self.upload_btn.setMinimumHeight(60)
-        self.upload_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.upload_btn.clicked.connect(self.on_upload_clicked)
-        upload_layout.addWidget(self.upload_btn)
-
         # 图片预览区域
         self.image_label = QLabel()
         self.image_label.setMinimumSize(400, 300)
@@ -84,13 +80,15 @@ class UploadPage(QWidget):
                 background: #F5F9FF;
                 border: 2px solid #E1E8F0;
                 border-radius: 8px;
-                color: #7F8C8D;
+                color: #2C3E50;
                 font-size: 16px;
             }
         """)
-        self.image_label.setText("暂无图片 / No Image\n点击上方按钮上传")
+        self.image_label.setText("暂无图片 / No Image\n点击此区域或拖拽图片上传")
+        self.image_label.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.image_label.mousePressEvent = self._on_preview_clicked
         self.image_label.setWordWrap(True)
-        upload_layout.addWidget(self.image_label)
+        upload_layout.addWidget(self.image_label, 0, Qt.AlignmentFlag.AlignCenter)
 
         # 滚动区域包装
         scroll = QScrollArea()
@@ -118,6 +116,7 @@ class UploadPage(QWidget):
 
         self.info_label = QLabel()
         self.info_label.setWordWrap(True)
+        self.info_label.setStyleSheet("color: #2C3E50; font-size: 14px;")
         info_layout.addWidget(self.info_label)
 
         layout.addWidget(self.info_group)
@@ -128,7 +127,7 @@ class UploadPage(QWidget):
         # 操作按钮
         btn_layout = QHBoxLayout()
 
-        self.clear_btn = QPushButton("🗑️ 清除 / Clear")
+        self.clear_btn = QPushButton("清除 / Clear")
         self.clear_btn.setMinimumHeight(45)
         self.clear_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.clear_btn.setProperty("class", "secondary")
@@ -136,10 +135,27 @@ class UploadPage(QWidget):
         self.clear_btn.clicked.connect(self.on_clear_clicked)
         btn_layout.addWidget(self.clear_btn)
 
-        self.continue_btn = QPushButton("➡️ 继续 / Continue")
+        self.continue_btn = QPushButton("继续 / Continue")
         self.continue_btn.setMinimumHeight(45)
         self.continue_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.continue_btn.setEnabled(False)
+        self.continue_btn.setStyleSheet("""
+            QPushButton {
+                background: #E1E8F0;
+                border: 2px solid #D4DBE4;
+                border-radius: 8px;
+                color: #2C3E50;
+                font-weight: 600;
+            }
+            QPushButton:pressed {
+                background: #CCD5E0;
+            }
+            QPushButton:disabled {
+                background: #F5F7FF;
+                color: #94A0B2;
+                border-color: #E1E8F0;
+            }
+        """)
         self.continue_btn.clicked.connect(self.on_continue_clicked)
         btn_layout.addWidget(self.continue_btn)
 
@@ -156,6 +172,11 @@ class UploadPage(QWidget):
             files = file_dialog.selectedFiles()
             if files:
                 self.load_image(files[0])
+
+    def _on_preview_clicked(self, event):
+        """图片区域点击事件"""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.on_upload_clicked()
 
     def load_image(self, image_path: str):
         """加载图片"""
@@ -196,9 +217,8 @@ class UploadPage(QWidget):
         try:
             pixmap = QPixmap(image_path)
 
-            # 缩放以适应标签
             scaled_pixmap = pixmap.scaled(
-                self.image_label.size(),
+                600, 450,
                 Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation
             )
@@ -232,7 +252,7 @@ class UploadPage(QWidget):
 
         # 重置UI
         self.image_label.clear()
-        self.image_label.setText("暂无图片 / No Image\n点击上方按钮上传")
+        self.image_label.setText("暂无图片 / No Image\n点击此区域或拖拽图片上传")
         self.info_label.clear()
         self.info_group.setVisible(False)
 
@@ -251,7 +271,7 @@ class UploadPage(QWidget):
 
     def get_current_image_path(self) -> str:
         """获取当前图片路径"""
-        return self.current_image_path
+        return self.current_image_path or ""
 
     def get_current_image(self):
         """获取当前图片对象"""
@@ -260,3 +280,71 @@ class UploadPage(QWidget):
     def get_image_info(self) -> dict:
         """获取图片信息"""
         return self.image_info
+
+    def dragEnterEvent(self, a0: Optional[QDragEnterEvent]):
+        """拖拽进入事件"""
+        if not a0:
+            return
+        mime_data = a0.mimeData()
+        if mime_data and mime_data.hasUrls():
+            urls = mime_data.urls()
+            for url in urls:
+                if url.isLocalFile():
+                    file_path = url.toLocalFile()
+                    if file_path.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp')):
+                        a0.acceptProposedAction()
+                        self.image_label.setStyleSheet("""
+            QLabel {
+                background: #E8F2FF;
+                border: 2px dashed #4A90E2;
+                border-radius: 8px;
+                color: #4A90E2;
+                font-size: 16px;
+                font-weight: bold;
+            }
+        """)
+                        return
+        a0.ignore()
+
+    def dragLeaveEvent(self, a0):
+        """拖拽离开事件"""
+        if not self.current_image_path:
+            self.image_label.setStyleSheet("""
+            QLabel {
+                background: #F5F9FF;
+                border: 2px solid #E1E8F0;
+                border-radius: 8px;
+                color: #2C3E50;
+                font-size: 16px;
+            }
+        """)
+
+    def dropEvent(self, a0: Optional[QDropEvent]):
+        """拖拽放下事件"""
+        if not a0:
+            return
+        self.image_label.setStyleSheet("""
+            QLabel {
+                background: #F5F9FF;
+                border: 2px solid #E1E8F0;
+                border-radius: 8px;
+                color: #2C3E50;
+                font-size: 16px;
+            }
+        """)
+        
+        mime_data = a0.mimeData()
+        if mime_data:
+            urls = mime_data.urls()
+            if urls:
+                file_path = urls[0].toLocalFile()
+                if file_path.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp')):
+                    self.load_image(file_path)
+                    a0.acceptProposedAction()
+                else:
+                    self.show_error("不支持的文件格式 / Unsupported file format")
+                    a0.ignore()
+            else:
+                a0.ignore()
+        else:
+            a0.ignore()

@@ -8,9 +8,18 @@ from pathlib import Path
 
 
 class ConfigManager:
-    """配置管理器"""
+    """配置管理器（单例模式）"""
+    _instance = None
+    _config = None
 
-    def __init__(self):
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(ConfigManager, cls).__new__(cls)
+            cls._instance._initialize()
+        return cls._instance
+
+    def _initialize(self):
+        """初始化配置管理器"""
         # 数据目录（安装目录下的data子目录）
         self.app_dir = Path(__file__).parent.parent
         self.data_dir = self.app_dir / 'data'
@@ -22,8 +31,10 @@ class ConfigManager:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.user_data_dir.mkdir(parents=True, exist_ok=True)
 
-        # 配置数据
-        self.config = self._load_config()
+        # 配置数据（共享）
+        if ConfigManager._config is None:
+            ConfigManager._config = self._load_config()
+        self.config = ConfigManager._config
 
     def _load_config(self):
         """加载配置"""
@@ -44,6 +55,11 @@ class ConfigManager:
             'window_geometry': {},
             'nano_banana_model': 'nano-banana-fast',
             'nano_banana_image_size': '1K',
+            'output_dir': './output',
+            'image_format': 'PNG',
+            'print_dpi': 300,
+            'auto_save_project': True,
+            'show_color_numbers': False,
         }
 
         if self.config_file.exists():
@@ -168,3 +184,12 @@ class ConfigManager:
     def get_user_data_dir(self):
         """获取用户数据目录"""
         return str(self.user_data_dir)
+
+    # 参数持久化
+    def save_last_params(self, params: dict):
+        """保存上次使用的参数"""
+        self.set('last_params', params)
+
+    def get_last_params(self) -> dict:
+        """获取上次使用的参数"""
+        return self.get('last_params', {})

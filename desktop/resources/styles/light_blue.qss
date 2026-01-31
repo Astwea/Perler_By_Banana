@@ -13,58 +13,88 @@ QWidget {
     font-size: 14px;
 }
 
+/* 明确指定常见控件的字体颜色，避免某些系统主题将文字变成白色 */
+QLabel,
+QGroupBox QLabel,
+QMenuBar::item,
+QMenu::item,
+QTabWidget::pane QLabel,
+QCheckBox,
+QRadioButton,
+QTableWidget,
+QTableWidgetItem,
+QHeaderView::section {
+    color: #2C3E50;
+}
+
 /* ========== 按钮样式 ========== */
 QPushButton {
-    background: linear-gradient(135deg, #4A90E2, #357ABD);
-    color: white;
-    border: none;
+    background-color: #E8F2FF;
+    color: #2C3E50;
+    border: 2px solid #7DB3F0;
     border-radius: 8px;
-    padding: 10px 24px;
+    padding: 10px 20px;
     font-weight: 600;
     font-size: 14px;
 }
 
 QPushButton:hover {
-    background: linear-gradient(135deg, #5DA3F5, #4A90E2);
+    background-color: #DCEBFF;
+    border-color: #4A90E2;
 }
 
 QPushButton:pressed {
-    background: linear-gradient(135deg, #357ABD, #2E6AA5);
+    background-color: #CFE3FF;
+    border-color: #357ABD;
 }
 
 QPushButton:disabled {
     background: #E1E8F0;
-    color: #B0BEC5;
+    color: #7F8C8D;
 }
 
 /* 次要按钮 */
 QPushButton[class="secondary"] {
     background: #FFFFFF;
-    color: #4A90E2;
+    color: #2C3E50;
     border: 2px solid #4A90E2;
 }
 
 QPushButton[class="secondary"]:hover {
-    background: #4A90E2;
-    color: white;
+    background: #F0F7FF;
+    color: #2C3E50;
 }
 
 /* 成功按钮 */
 QPushButton[class="success"] {
-    background: linear-gradient(135deg, #2ECC71, #27AE60);
+    background-color: #2ECC71;
+    color: white;
+    border: 2px solid #27AE60;
 }
 
 QPushButton[class="success"]:hover {
-    background: linear-gradient(135deg, #2ECC71, #27AE60);
+    background-color: #34D175;
+    border-color: #2BAD57;
 }
 
 /* 危险按钮 */
 QPushButton[class="danger"] {
-    background: linear-gradient(135deg, #E74C3C, #C0392B);
+    background-color: #E74C3C;
+    color: white;
+    border: 2px solid #C0392B;
 }
 
 QPushButton[class="danger"]:hover {
-    background: linear-gradient(135deg, #E74C3C, #C0392B);
+    background-color: #D6453A;
+    border-color: #B8352C;
+}
+
+QPushButton[class="secondary"]:disabled,
+QPushButton[class="success"]:disabled,
+QPushButton[class="danger"]:disabled {
+    color: #7F8C8D;
+    background: #E1E8F0;
+    border-color: #E1E8F0;
 }
 
 /* ========== 输入框样式 ========== */
@@ -72,7 +102,7 @@ QLineEdit, QTextEdit, QPlainTextEdit {
     background: #FFFFFF;
     border: 2px solid #E1E8F0;
     border-radius: 8px;
-    padding: 10px 12px;
+    padding: 8px 12px;
     color: #2C3E50;
     font-size: 14px;
 }
@@ -194,7 +224,7 @@ QProgressBar {
 }
 
 QProgressBar::chunk {
-    background: linear-gradient(90deg, #4A90E2, #7DB3F0);
+    background-color: #4A90E2;
     border-radius: 10px;
 }
 

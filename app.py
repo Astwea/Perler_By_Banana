@@ -41,7 +41,12 @@ logger = logging.getLogger(__name__)
 from core.image_processor import ImageProcessor
 from core.color_matcher import ColorMatcher
 from core.optimizer import PatternOptimizer
-from core.bead_pattern import BeadPattern
+from bead_pattern import BeadPattern
+from bead_pattern.render.technical_panel import (
+    generate_technical_sheet,
+    export_statistics,
+    TechnicalPanelConfig
+)
 from core.printer import Printer
 from core.nano_banana import NanoBananaClient, calculate_aspect_ratio
 
@@ -223,6 +228,19 @@ class PrintParams(BaseModel):
     dpi: int = 300
 
 
+class TechnicalPanelParams(BaseModel):
+    font_size: int = 12
+    color_block_size: int = 24
+    row_height: int = 32
+    panel_padding: int = 20
+    margin_from_pattern: int = 20
+    show_total_count: bool = True
+    show_dimensions: bool = True
+    show_bead_size: bool = True
+    sort_by_count: bool = True
+    exclude_background: bool = True
+
+
 class NanoBananaConfig(BaseModel):
     api_key: str
     base_url: str = "https://api.grsai.com"
@@ -268,6 +286,7 @@ async def upload_image(file: UploadFile = File(...)):
             "file_id": file_id,
             "filename": file.filename,
             "file_path": file_path,
+            "image_url": f"/static/images/{file_id}{file_ext}",
             "width": width,
             "height": height
         }
@@ -1045,9 +1064,9 @@ async def export_pattern(pattern_id: str, format: str = "json"):
     """
     if pattern_id not in patterns_store:
         raise HTTPException(status_code=404, detail="图案不存在")
-    
+
     pattern = patterns_store[pattern_id]["pattern"]
-    
+
     if format == "json":
         json_path = f"static/output/{pattern_id}.json"
         pattern.to_json(json_path)
@@ -1062,14 +1081,120 @@ async def export_pattern(pattern_id: str, format: str = "json"):
         # 在线程池中执行PNG导出（CPU密集型任务）
         def _save_png():
             png_path = f"static/output/{pattern_id}_export.png"
-            pattern.save_image(png_path, cell_size=20, show_labels=True, show_grid=True)
+            pattern.save_image(png_path, cell_size=30, show_labels=True, show_grid=True, show_legend=True)
             return png_path
-        
+
         png_path = await run_in_thread_pool(_save_png)
         return FileResponse(png_path, media_type="image/png",
                           filename=f"pattern_{pattern_id}.png")
     else:
         raise HTTPException(status_code=400, detail="不支持的导出格式")
+
+
+@app.post("/api/pattern/{pattern_id}/technical-sheet")
+async def generate_technical_sheet_api(
+    pattern_id: str,
+    params: TechnicalPanelParams
+):
+    """
+    生成工程说明书风格的拼豆图（含信息面板）
+
+    Args:
+        pattern_id: 图案ID
+        params: 面板参数
+
+    Returns:
+        工程图纸的PNG文件
+    """
+    if pattern_id not in patterns_store:
+        raise HTTPException(status_code=404, detail="图案不存在")
+
+    pattern = patterns_store[pattern_id]["pattern"]
+
+    # 创建面板配置
+    config = TechnicalPanelConfig(
+        font_size=params.font_size,
+        color_block_size=params.color_block_size,
+        row_height=params.row_height,
+        panel_padding=params.panel_padding,
+        margin_from_pattern=params.margin_from_pattern,
+        background_color=(255, 255, 255),
+        text_color=(0, 0, 0),
+        border_width=0,
+        header_font_size=params.font_size + 2
+    )
+
+    # 在线程池中生成工程图纸（CPU密集型任务）
+    def _generate_sheet():
+        tech_sheet = generate_technical_sheet(
+            pattern,
+            cell_size=10,
+            show_grid=True,
+            show_labels=False,  # 工程图纸通常不显示编号
+            config=config,
+            exclude_background=params.exclude_background
+        )
+        return tech_sheet
+
+    sheet_img = await run_in_thread_pool(_generate_sheet)
+
+    # 保存图像
+    sheet_path = f"static/output/{pattern_id}_technical_sheet.png"
+    sheet_img.save(sheet_path, compress_level=1)
+
+    return FileResponse(
+        sheet_path,
+        media_type="image/png",
+        filename=f"pattern_{pattern_id}_technical_sheet.png"
+    )
+
+
+@app.get("/api/pattern/{pattern_id}/statistics")
+async def export_statistics_api(
+    pattern_id: str,
+    format: str = "json",
+    exclude_background: bool = True
+):
+    """
+    导出颜色统计数据
+
+    Args:
+        pattern_id: 图案ID
+        format: 导出格式（'json' 或 'csv'）
+        exclude_background: 是否排除背景色
+
+    Returns:
+        统计数据文件
+    """
+    if pattern_id not in patterns_store:
+        raise HTTPException(status_code=404, detail="图案不存在")
+
+    pattern = patterns_store[pattern_id]["pattern"]
+
+    if format not in ['json', 'csv']:
+        raise HTTPException(status_code=400, detail="不支持的导出格式，支持: json, csv")
+
+    # 在线程池中导出统计数据（CPU密集型任务）
+    def _export_stats():
+        stats_path = f"static/output/{pattern_id}_statistics.{format}"
+        export_statistics(
+            pattern,
+            stats_path,
+            format=format,
+            exclude_background=exclude_background
+        )
+        return stats_path
+
+    stats_path = await run_in_thread_pool(_export_stats)
+
+    media_type = "application/json" if format == "json" else "text/csv"
+    filename = f"pattern_{pattern_id}_statistics.{format}"
+
+    return FileResponse(
+        stats_path,
+        media_type=media_type,
+        filename=filename
+    )
 
 
 @app.get("/api/pattern/{pattern_id}/print-preview")
